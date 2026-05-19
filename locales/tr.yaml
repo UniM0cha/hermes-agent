@@ -3,348 +3,752 @@
 
 approval:
   dangerous_header: "⚠️  TEHLİKELİ KOMUT: {description}"
-  choose_long:     "      [b]ir kez  |  [o]turum  |  [h]er zaman  |  [r]eddet"
-  choose_short:    "      [b]ir kez  |  [o]turum  |  [r]eddet"
-  prompt_long:     "      Seçim [b/o/h/R]: "
-  prompt_short:    "      Seçim [b/o/R]: "
-  timeout:         "      ⏱ Zaman aşımı — komut reddedildi"
-  allowed_once:    "      ✓ Bir kez izin verildi"
+  choose_long: "      [b]ir kez  |  [o]turum  |  [h]er zaman  |  [r]eddet"
+  choose_short: "      [b]ir kez  |  [o]turum  |  [r]eddet"
+  prompt_long: "      Seçim [b/o/h/R]: "
+  prompt_short: "      Seçim [b/o/R]: "
+  timeout: "      ⏱ Zaman aşımı — komut reddedildi"
+  allowed_once: "      ✓ Bir kez izin verildi"
   allowed_session: "      ✓ Bu oturum için izin verildi"
-  allowed_always:  "      ✓ Kalıcı izin listesine eklendi"
-  denied:          "      ✗ Reddedildi"
-  cancelled:       "      ✗ İptal edildi"
+  allowed_always: "      ✓ Kalıcı izin listesine eklendi"
+  denied: "      ✗ Reddedildi"
+  cancelled: "      ✗ İptal edildi"
   blocklist_message: "Bu komut koşulsuz engelleme listesinde ve onaylanamaz."
 
 gateway:
-  approval_expired: "⚠️ Onay süresi doldu (ajan artık beklemiyor). Ajanın tekrar denemesini isteyin."
-  draining:         "⏳ Yeniden başlatmadan önce {count} aktif ajan bekleniyor..."
-  goal_cleared:     "✓ Hedef temizlendi."
-  no_active_goal:   "Aktif hedef yok."
+  approval_expired: "⚠️ Onay süresi doldu (ajan artık beklemiyor). Ajanın tekrar denemesini
+    isteyin."
+  draining: "⏳ Yeniden başlatmadan önce {count} aktif ajan bekleniyor..."
+  goal_cleared: "✓ Hedef temizlendi."
+  no_active_goal: "Aktif hedef yok."
   config_read_failed: "⚠️ config.yaml okunamadı: {error}"
   config_save_failed: "⚠️ Yapılandırma kaydedilemedi: {error}"
 
   model:
-    error_prefix:           "Hata: {error}"
-    switched:               "Model `{model}` olarak değiştirildi"
-    provider_label:         "Sağlayıcı: {provider}"
-    context_label:          "Bağlam: {tokens} token"
-    max_output_label:       "Maks. çıktı: {tokens} token"
-    cost_label:             "Maliyet: {cost}"
-    capabilities_label:     "Yetenekler: {capabilities}"
+    error_prefix: "Hata: {error}"
+    switched: "Model `{model}` olarak değiştirildi"
+    provider_label: "Sağlayıcı: {provider}"
+    context_label: "Bağlam: {tokens} token"
+    max_output_label: "Maks. çıktı: {tokens} token"
+    cost_label: "Maliyet: {cost}"
+    capabilities_label: "Yetenekler: {capabilities}"
     prompt_caching_enabled: "Prompt önbelleği: etkin"
-    warning_prefix:         "Uyarı: {warning}"
-    saved_global:           "config.yaml'a kaydedildi (`--global`)"
-    session_only_hint:      "_(yalnızca bu oturum — kalıcı yapmak için `--global` ekleyin)_"
-    current_label:          "Geçerli: `{model}` ({provider})"
-    current_tag:            " (geçerli)"
-    more_models_suffix:     " (+{count} tane daha)"
-    usage_switch_model:     "`/model <name>` — modeli değiştir"
-    usage_switch_provider:  "`/model <name> --provider <slug>` — sağlayıcıyı değiştir"
-    usage_persist:          "`/model <name> --global` — kalıcı kaydet"
+    warning_prefix: "Uyarı: {warning}"
+    saved_global: "config.yaml'a kaydedildi (`--global`)"
+    session_only_hint: "_(yalnızca bu oturum — kalıcı yapmak için `--global` ekleyin)_"
+    current_label: "Geçerli: `{model}` ({provider})"
+    current_tag: " (geçerli)"
+    more_models_suffix: " (+{count} tane daha)"
+    usage_switch_model: "`/model <name>` — modeli değiştir"
+    usage_switch_provider: "`/model <name> --provider <slug>` — sağlayıcıyı değiştir"
+    usage_persist: "`/model <name> --global` — kalıcı kaydet"
 
   agents:
-    header:                "🤖 **Aktif Ajanlar ve Görevler**"
-    active_agents:         "**Aktif ajanlar:** {count}"
-    this_chat:             " · bu sohbet"
-    more:                  "... ve {count} tane daha"
-    running_processes:     "**Çalışan arka plan süreçleri:** {count}"
-    async_jobs:            "**Gateway asenkron işleri:** {count}"
-    none:                  "Aktif ajan veya çalışan görev yok."
-    state_starting:        "başlatılıyor"
-    state_running:         "çalışıyor"
+    header: "🤖 **Aktif Ajanlar ve Görevler**"
+    active_agents: "**Aktif ajanlar:** {count}"
+    this_chat: " · bu sohbet"
+    more: "... ve {count} tane daha"
+    running_processes: "**Çalışan arka plan süreçleri:** {count}"
+    async_jobs: "**Gateway asenkron işleri:** {count}"
+    none: "Aktif ajan veya çalışan görev yok."
+    state_starting: "başlatılıyor"
+    state_running: "çalışıyor"
 
   approve:
-    no_pending:            "Onaylanacak bekleyen komut yok."
-    once_singular:         "✅ Komut onaylandı. Ajan devam ediyor..."
-    once_plural:           "✅ Komutlar onaylandı ({count} komut). Ajan devam ediyor..."
-    session_singular:      "✅ Komut onaylandı (desen bu oturum için onaylandı). Ajan devam ediyor..."
-    session_plural:        "✅ Komutlar onaylandı (desen bu oturum için onaylandı) ({count} komut). Ajan devam ediyor..."
-    always_singular:       "✅ Komut onaylandı (desen kalıcı olarak onaylandı). Ajan devam ediyor..."
-    always_plural:         "✅ Komutlar onaylandı (desen kalıcı olarak onaylandı) ({count} komut). Ajan devam ediyor..."
+    no_pending: "Onaylanacak bekleyen komut yok."
+    once_singular: "✅ Komut onaylandı. Ajan devam ediyor..."
+    once_plural: "✅ Komutlar onaylandı ({count} komut). Ajan devam ediyor..."
+    session_singular: "✅ Komut onaylandı (desen bu oturum için onaylandı). Ajan devam
+      ediyor..."
+    session_plural: "✅ Komutlar onaylandı (desen bu oturum için onaylandı) ({count}
+      komut). Ajan devam ediyor..."
+    always_singular: "✅ Komut onaylandı (desen kalıcı olarak onaylandı). Ajan devam
+      ediyor..."
+    always_plural: "✅ Komutlar onaylandı (desen kalıcı olarak onaylandı) ({count}
+      komut). Ajan devam ediyor..."
 
   background:
-    usage:                 "Kullanım: /background <prompt>\nÖrnek: /background Bugünün öne çıkan HN haberlerini özetle\n\nİstemi ayrı bir oturumda çalıştırır. Sohbete devam edebilirsin — sonuç tamamlandığında burada görünecek."
-    started:               "🔄 Arka plan görevi başlatıldı: \"{preview}\"\nGörev kimliği: {task_id}\nSohbete devam edebilirsin — sonuçlar tamamlandığında burada görünecek."
+    usage: "Kullanım: /background <prompt>\nÖrnek: /background Bugünün öne çıkan HN
+      haberlerini özetle\n\nİstemi ayrı bir oturumda çalıştırır. Sohbete devam edebilirsin
+      — sonuç tamamlandığında burada görünecek."
+    started: "🔄 Arka plan görevi başlatıldı: \"{preview}\"\nGörev kimliği: {task_id}\n\
+      Sohbete devam edebilirsin — sonuçlar tamamlandığında burada görünecek."
 
   branch:
-    db_unavailable:        "Oturum veritabanı kullanılamıyor."
-    no_conversation:       "Dallandırılacak konuşma yok — önce bir mesaj gönderin."
-    create_failed:         "Dal oluşturulamadı: {error}"
-    switch_failed:         "Dal oluşturuldu ancak ona geçilemedi."
-    branched_one:          "⑂ **{title}** dalına geçildi ({count} mesaj kopyalandı)\nOrijinal: `{parent}`\nDal: `{new}`\nOrijinale geri dönmek için `/resume` kullanın."
-    branched_many:         "⑂ **{title}** dalına geçildi ({count} mesaj kopyalandı)\nOrijinal: `{parent}`\nDal: `{new}`\nOrijinale geri dönmek için `/resume` kullanın."
+    db_unavailable: "Oturum veritabanı kullanılamıyor."
+    no_conversation: "Dallandırılacak konuşma yok — önce bir mesaj gönderin."
+    create_failed: "Dal oluşturulamadı: {error}"
+    switch_failed: "Dal oluşturuldu ancak ona geçilemedi."
+    branched_one: "⑂ **{title}** dalına geçildi ({count} mesaj kopyalandı)\nOrijinal:
+      `{parent}`\nDal: `{new}`\nOrijinale geri dönmek için `/resume` kullanın."
+    branched_many: "⑂ **{title}** dalına geçildi ({count} mesaj kopyalandı)\nOrijinal:
+      `{parent}`\nDal: `{new}`\nOrijinale geri dönmek için `/resume` kullanın."
 
   commands:
-    usage:                 "Kullanım: `/commands [page]`"
-    skill_header:          "⚡ **Skill Komutları**:"
-    default_desc:          "Skill komutu"
-    none:                  "Kullanılabilir komut yok."
-    header:                "📚 **Komutlar** (toplam {total}, sayfa {page}/{total_pages})"
-    nav_prev:              "`/commands {page}` ← önceki"
-    nav_next:              "sonraki → `/commands {page}`"
-    out_of_range:          "_(İstenen sayfa {requested} aralık dışındaydı, sayfa {page} gösteriliyor.)_"
+    usage: "Kullanım: `/commands [page]`"
+    skill_header: "⚡ **Skill Komutları**:"
+    default_desc: "Skill komutu"
+    none: "Kullanılabilir komut yok."
+    header: "📚 **Komutlar** (toplam {total}, sayfa {page}/{total_pages})"
+    nav_prev: "`/commands {page}` ← önceki"
+    nav_next: "sonraki → `/commands {page}`"
+    out_of_range: "_(İstenen sayfa {requested} aralık dışındaydı, sayfa {page} gösteriliyor.)_"
 
   compress:
-    not_enough:            "Sıkıştırmak için yeterli konuşma yok (en az 4 mesaj gerekli)."
-    no_provider:           "Yapılandırılmış sağlayıcı yok — sıkıştırılamıyor."
-    nothing_to_do:         "Henüz sıkıştırılacak bir şey yok (transkript hâlâ tamamen korunan bağlam)."
-    focus_line:            "Odak: \"{topic}\""
-    summary_failed:        "⚠️ Özet oluşturma başarısız ({error}). {count} geçmiş mesaj kaldırılıp yer tutucuyla değiştirildi; önceki bağlam artık kurtarılamaz. auxiliary.compression model yapılandırmanızı kontrol edin."
-    aux_failed:            "ℹ️ Yapılandırılmış sıkıştırma modeli `{model}` başarısız oldu ({error}). Ana modelinizle kurtarıldı — bağlam sağlam — ancak config.yaml içindeki `auxiliary.compression.model` öğesini kontrol etmek isteyebilirsiniz."
-    failed:                "Sıkıştırma başarısız: {error}"
+    not_enough: "Sıkıştırmak için yeterli konuşma yok (en az 4 mesaj gerekli)."
+    no_provider: "Yapılandırılmış sağlayıcı yok — sıkıştırılamıyor."
+    nothing_to_do: "Henüz sıkıştırılacak bir şey yok (transkript hâlâ tamamen korunan
+      bağlam)."
+    noop_headline: "Sıkıştırma değişiklik yapmadı: {count} mesaj"
+    done_headline: "Sıkıştırıldı: {before} → {after} mesaj"
+    size_unchanged: "Yaklaşık istek boyutu: ~{tokens} token (değişmedi)"
+    size_changed: "Yaklaşık istek boyutu: ~{before} → ~{after} token"
+    denser_note: "Not: Daha az mesaj olsa bile, sıkıştırma konuşmayı daha yoğun özetlere
+      dönüştürdüğünde bu tahmin artabilir."
+    focus_line: "Odak: \"{topic}\""
+    summary_failed: "⚠️ Özet oluşturma başarısız ({error}). {count} geçmiş mesaj kaldırılıp
+      yer tutucuyla değiştirildi; önceki bağlam artık kurtarılamaz. auxiliary.compression
+      model yapılandırmanızı kontrol edin."
+    aux_failed: "ℹ️ Yapılandırılmış sıkıştırma modeli `{model}` başarısız oldu ({error}).
+      Ana modelinizle kurtarıldı — bağlam sağlam — ancak config.yaml içindeki `auxiliary.compression.model`
+      öğesini kontrol etmek isteyebilirsiniz."
+    failed: "Sıkıştırma başarısız: {error}"
 
   debug:
-    upload_failed:         "✗ Hata ayıklama raporu yüklenemedi: {error}"
-    header:                "**Hata ayıklama raporu yüklendi:**"
-    auto_delete:           "⏱ Paste'ler 6 saat içinde otomatik olarak silinecek."
-    full_logs_hint:        "Tam günlük yüklemeleri için CLI'dan `hermes debug share` kullanın."
-    share_hint:            "Destek için bu bağlantıları Hermes ekibiyle paylaşın."
+    upload_failed: "✗ Hata ayıklama raporu yüklenemedi: {error}"
+    header: "**Hata ayıklama raporu yüklendi:**"
+    auto_delete: "⏱ Paste'ler 6 saat içinde otomatik olarak silinecek."
+    full_logs_hint: "Tam günlük yüklemeleri için CLI'dan `hermes debug share` kullanın."
+    share_hint: "Destek için bu bağlantıları Hermes ekibiyle paylaşın."
 
   deny:
-    stale:                 "❌ Komut reddedildi (onay geçersizdi)."
-    no_pending:            "Reddedilecek bekleyen komut yok."
-    denied_singular:       "❌ Komut reddedildi."
-    denied_plural:         "❌ Komutlar reddedildi ({count} komut)."
+    stale: "❌ Komut reddedildi (onay geçersizdi)."
+    no_pending: "Reddedilecek bekleyen komut yok."
+    denied_singular: "❌ Komut reddedildi."
+    denied_plural: "❌ Komutlar reddedildi ({count} komut)."
 
   fast:
-    not_supported:         "⚡ /fast yalnızca Priority Processing destekleyen OpenAI modellerinde kullanılabilir."
-    status:                "⚡ Priority Processing\n\nMevcut mod: `{mode}`\n\n_Kullanım:_ `/fast <normal|fast|status>`"
-    unknown_arg:           "⚠️ Bilinmeyen argüman: `{arg}`\n\n**Geçerli seçenekler:** normal, fast, status"
-    saved:                 "⚡ ✓ Priority Processing: **{label}** (yapılandırmaya kaydedildi)\n_(sonraki mesajda geçerli olur)_"
-    session_only:          "⚡ ✓ Priority Processing: **{label}** (yalnızca bu oturum)"
-    label_fast:            "FAST"
-    label_normal:          "NORMAL"
-    status_fast:           "fast"
-    status_normal:         "normal"
+    not_supported: "⚡ /fast yalnızca Priority Processing destekleyen OpenAI modellerinde
+      kullanılabilir."
+    status: "⚡ Priority Processing\n\nMevcut mod: `{mode}`\n\n_Kullanım:_ `/fast <normal|fast|status>`"
+    unknown_arg: "⚠️ Bilinmeyen argüman: `{arg}`\n\n**Geçerli seçenekler:** normal,
+      fast, status"
+    saved: "⚡ ✓ Priority Processing: **{label}** (yapılandırmaya kaydedildi)\n_(sonraki
+      mesajda geçerli olur)_"
+    session_only: "⚡ ✓ Priority Processing: **{label}** (yalnızca bu oturum)"
+    label_fast: "FAST"
+    label_normal: "NORMAL"
+    status_fast: "fast"
+    status_normal: "normal"
 
   footer:
-    status:                "📎 Çalışma zamanı altbilgisi: **{state}**\nAlanlar: `{fields}`\nPlatform: `{platform}`"
-    usage:                 "Kullanım: `/footer [on|off|status]`"
-    saved:                 "📎 Çalışma zamanı altbilgisi: **{state}**{example}\n_(genel olarak kaydedildi — sonraki mesajda geçerli olur)_"
-    example_line:          "\nÖrnek: `{preview}`"
-    state_on:              "ON"
-    state_off:             "OFF"
+    status: "📎 Çalışma zamanı altbilgisi: **{state}**\nAlanlar: `{fields}`\nPlatform:
+      `{platform}`"
+    usage: "Kullanım: `/footer [on|off|status]`"
+    saved: "📎 Çalışma zamanı altbilgisi: **{state}**{example}\n_(genel olarak kaydedildi
+      — sonraki mesajda geçerli olur)_"
+    example_line: "\nÖrnek: `{preview}`"
+    state_on: "ON"
+    state_off: "OFF"
 
   goal:
-    unavailable:           "Bu oturumda hedefler kullanılamıyor."
-    no_goal_set:           "Hedef ayarlanmadı."
-    paused:                "⏸ Hedef duraklatıldı: {goal}"
-    no_resume:             "Devam ettirilecek hedef yok."
-    resumed:               "▶ Hedef devam ettirildi: {goal}\nDevam etmek için herhangi bir mesaj gönderin veya bekleyin — bir sonraki turda adımı atacağım."
-    invalid:               "Geçersiz hedef: {error}"
-    set:                   "⊙ Hedef ayarlandı ({budget} turluk bütçe): {goal}\nHedef tamamlanana, siz duraklatana/temizleyene veya bütçe tükenene kadar çalışmaya devam edeceğim.\nKontroller: /goal status · /goal pause · /goal resume · /goal clear"
+    unavailable: "Bu oturumda hedefler kullanılamıyor."
+    no_goal_set: "Hedef ayarlanmadı."
+    paused: "⏸ Hedef duraklatıldı: {goal}"
+    no_resume: "Devam ettirilecek hedef yok."
+    resumed: "▶ Hedef devam ettirildi: {goal}\nDevam etmek için herhangi bir mesaj
+      gönderin veya bekleyin — bir sonraki turda adımı atacağım."
+    invalid: "Geçersiz hedef: {error}"
+    set: "⊙ Hedef ayarlandı ({budget} turluk bütçe): {goal}\nHedef tamamlanana, siz
+      duraklatana/temizleyene veya bütçe tükenene kadar çalışmaya devam edeceğim.\n\
+      Kontroller: /goal status · /goal pause · /goal resume · /goal clear"
 
   help:
-    header:                "📖 **Hermes Komutları**\n"
-    skill_header:          "\n⚡ **Skill Komutları** ({count} aktif):"
-    more_use_commands:     "\n... ve {count} tane daha. Tam sayfalı liste için `/commands` kullanın."
+    header: "📖 **Hermes Komutları**\n"
+    skill_header: "\n⚡ **Skill Komutları** ({count} aktif):"
+    more_use_commands: "\n... ve {count} tane daha. Tam sayfalı liste için `/commands`
+      kullanın."
 
   insights:
-    invalid_days:          "Geçersiz --days değeri: {value}"
-    error:                 "Analiz oluşturulurken hata: {error}"
+    invalid_days: "Geçersiz --days değeri: {value}"
+    error: "Analiz oluşturulurken hata: {error}"
 
   kanban:
-    error_prefix:          "⚠ kanban hatası: {error}"
-    subscribed_suffix:     "(abone olundu — {task_id} tamamlandığında veya engellendiğinde bildirim alacaksınız)"
-    truncated_suffix:      "… (kısaltıldı; tam çıktı için terminalinizde `hermes kanban …` komutunu kullanın)"
-    no_output:             "(çıktı yok)"
+    error_prefix: "⚠ kanban hatası: {error}"
+    subscribed_suffix: "(abone olundu — {task_id} tamamlandığında veya engellendiğinde
+      bildirim alacaksınız)"
+    truncated_suffix: "… (kısaltıldı; tam çıktı için terminalinizde `hermes kanban
+      …` komutunu kullanın)"
+    no_output: "(çıktı yok)"
 
   personality:
-    none_configured:       "`{path}/config.yaml` içinde yapılandırılmış kişilik yok"
-    header:                "🎭 **Mevcut Kişilikler**\n"
-    none_option:           "• `none` — (kişilik kaplaması yok)"
-    item:                  "• `{name}` — {preview}"
-    usage:                 "\nKullanım: `/personality <name>`"
-    save_failed:           "⚠️ Kişilik değişikliği kaydedilemedi: {error}"
-    cleared:               "🎭 Kişilik temizlendi — temel ajan davranışı kullanılıyor.\n_(bir sonraki mesajda etkili olur)_"
-    set_to:                "🎭 Kişilik **{name}** olarak ayarlandı\n_(bir sonraki mesajda etkili olur)_"
-    unknown:               "Bilinmeyen kişilik: `{name}`\n\nMevcut: {available}"
+    none_configured: "`{path}/config.yaml` içinde yapılandırılmış kişilik yok"
+    header: "🎭 **Mevcut Kişilikler**\n"
+    none_option: "• `none` — (kişilik kaplaması yok)"
+    item: "• `{name}` — {preview}"
+    usage: "\nKullanım: `/personality <name>`"
+    save_failed: "⚠️ Kişilik değişikliği kaydedilemedi: {error}"
+    cleared: "🎭 Kişilik temizlendi — temel ajan davranışı kullanılıyor.\n_(bir sonraki
+      mesajda etkili olur)_"
+    set_to: "🎭 Kişilik **{name}** olarak ayarlandı\n_(bir sonraki mesajda etkili olur)_"
+    unknown: "Bilinmeyen kişilik: `{name}`\n\nMevcut: {available}"
 
   profile:
-    header:                "👤 **Profil:** `{profile}`"
-    home:                  "📂 **Ana dizin:** `{home}`"
+    header: "👤 **Profil:** `{profile}`"
+    home: "📂 **Ana dizin:** `{home}`"
 
   reasoning:
-    level_default:             "medium (varsayılan)"
-    level_disabled:            "none (devre dışı)"
-    scope_session:             "oturum geçersiz kılma"
-    scope_global:              "genel yapılandırma"
-    status:                    "🧠 **Akıl Yürütme Ayarları**\n\n**Güç:** `{level}`\n**Kapsam:** {scope}\n**Görüntüleme:** {display}\n\n_Kullanım:_ `/reasoning <none|minimal|low|medium|high|xhigh|reset|show|hide> [--global]`"
-    display_on:                "açık ✓"
-    display_off:               "kapalı"
-    display_set_on:            "🧠 ✓ Akıl yürütme görüntüleme: **AÇIK**\n**{platform}** üzerinde her yanıttan önce modelin düşüncesi gösterilecek."
-    display_set_off:           "🧠 ✓ **{platform}** için akıl yürütme görüntüleme: **KAPALI**"
-    reset_global_unsupported:  "⚠️ `/reasoning reset --global` desteklenmiyor. Genel varsayılanı değiştirmek için `/reasoning <level> --global` kullanın."
-    reset_done:                "🧠 ✓ Oturumun akıl yürütme geçersiz kılması temizlendi; genel yapılandırmaya geri dönülüyor."
-    unknown_arg:               "⚠️ Bilinmeyen argüman: `{arg}`\n\n**Geçerli seviyeler:** none, minimal, low, medium, high, xhigh\n**Görüntüleme:** show, hide\n**Kalıcı:** bu oturumun ötesinde kaydetmek için `--global` ekleyin"
-    set_global:                "🧠 ✓ Akıl yürütme gücü `{effort}` olarak ayarlandı (yapılandırmaya kaydedildi)\n_(sonraki mesajda etkili)_"
-    set_global_save_failed:    "🧠 ✓ Akıl yürütme gücü `{effort}` olarak ayarlandı (yalnızca bu oturum — yapılandırma kaydedilemedi)\n_(sonraki mesajda etkili)_"
-    set_session:               "🧠 ✓ Akıl yürütme gücü `{effort}` olarak ayarlandı (yalnızca bu oturum — kalıcı yapmak için `--global` ekleyin)\n_(sonraki mesajda etkili)_"
+    level_default: "medium (varsayılan)"
+    level_disabled: "none (devre dışı)"
+    scope_session: "oturum geçersiz kılma"
+    scope_global: "genel yapılandırma"
+    status: "🧠 **Akıl Yürütme Ayarları**\n\n**Güç:** `{level}`\n**Kapsam:** {scope}\n\
+      **Görüntüleme:** {display}\n\n_Kullanım:_ `/reasoning <none|minimal|low|medium|high|xhigh|reset|show|hide>
+      [--global]`"
+    display_on: "açık ✓"
+    display_off: "kapalı"
+    display_set_on: "🧠 ✓ Akıl yürütme görüntüleme: **AÇIK**\n**{platform}** üzerinde
+      her yanıttan önce modelin düşüncesi gösterilecek."
+    display_set_off: "🧠 ✓ **{platform}** için akıl yürütme görüntüleme: **KAPALI**"
+    reset_global_unsupported: "⚠️ `/reasoning reset --global` desteklenmiyor. Genel
+      varsayılanı değiştirmek için `/reasoning <level> --global` kullanın."
+    reset_done: "🧠 ✓ Oturumun akıl yürütme geçersiz kılması temizlendi; genel yapılandırmaya
+      geri dönülüyor."
+    unknown_arg: "⚠️ Bilinmeyen argüman: `{arg}`\n\n**Geçerli seviyeler:** none, minimal,
+      low, medium, high, xhigh\n**Görüntüleme:** show, hide\n**Kalıcı:** bu oturumun
+      ötesinde kaydetmek için `--global` ekleyin"
+    set_global: "🧠 ✓ Akıl yürütme gücü `{effort}` olarak ayarlandı (yapılandırmaya
+      kaydedildi)\n_(sonraki mesajda etkili)_"
+    set_global_save_failed: "🧠 ✓ Akıl yürütme gücü `{effort}` olarak ayarlandı (yalnızca
+      bu oturum — yapılandırma kaydedilemedi)\n_(sonraki mesajda etkili)_"
+    set_session: "🧠 ✓ Akıl yürütme gücü `{effort}` olarak ayarlandı (yalnızca bu oturum
+      — kalıcı yapmak için `--global` ekleyin)\n_(sonraki mesajda etkili)_"
 
   reload_mcp:
-    cancelled:             "🟡 /reload-mcp iptal edildi. MCP araçları değiştirilmedi."
-    always_followup:       "ℹ️ Bundan sonraki `/reload-mcp` çağrıları onaysız çalışacak. `config.yaml` içinde `approvals.mcp_reload_confirm: true` ile yeniden etkinleştirebilirsiniz."
-    confirm_prompt:        "⚠️ **/reload-mcp Onayı**\n\nMCP sunucularını yeniden yüklemek bu oturumdaki araç kümesini yeniden oluşturur ve **sağlayıcı prompt önbelleğini geçersiz kılar** — bir sonraki mesaj tüm giriş token'larını yeniden gönderir. Uzun bağlam veya yüksek akıl yürütmeli modellerde bu maliyetli olabilir.\n\nSeçim yapın:\n• **Bir Kez Onayla** — şimdi yeniden yükle\n• **Her Zaman Onayla** — şimdi yeniden yükle ve bu onayı kalıcı olarak sustur\n• **İptal** — MCP araçlarını değiştirme\n\n_Metin alternatifi: `/approve`, `/always` veya `/cancel` ile yanıtlayın._"
-    header:                "🔄 **MCP Sunucuları Yeniden Yüklendi**\n"
-    reconnected:           "♻️ Yeniden bağlanan: {names}"
-    added:                 "➕ Eklenen: {names}"
-    removed:               "➖ Kaldırılan: {names}"
-    none_connected:        "Bağlı MCP sunucusu yok."
-    tools_available:       "\n🔧 {servers} sunucudan {tools} araç kullanılabilir"
-    failed:                "❌ MCP yeniden yükleme başarısız: {error}"
+    cancelled: "🟡 /reload-mcp iptal edildi. MCP araçları değiştirilmedi."
+    always_followup: "ℹ️ Bundan sonraki `/reload-mcp` çağrıları onaysız çalışacak.
+      `config.yaml` içinde `approvals.mcp_reload_confirm: true` ile yeniden etkinleştirebilirsiniz."
+    confirm_prompt: "⚠️ **/reload-mcp Onayı**\n\nMCP sunucularını yeniden yüklemek
+      bu oturumdaki araç kümesini yeniden oluşturur ve **sağlayıcı prompt önbelleğini
+      geçersiz kılar** — bir sonraki mesaj tüm giriş token'larını yeniden gönderir.
+      Uzun bağlam veya yüksek akıl yürütmeli modellerde bu maliyetli olabilir.\n\n\
+      Seçim yapın:\n• **Bir Kez Onayla** — şimdi yeniden yükle\n• **Her Zaman Onayla**
+      — şimdi yeniden yükle ve bu onayı kalıcı olarak sustur\n• **İptal** — MCP araçlarını
+      değiştirme\n\n_Metin alternatifi: `/approve`, `/always` veya `/cancel` ile yanıtlayın._"
+    header: "🔄 **MCP Sunucuları Yeniden Yüklendi**\n"
+    reconnected: "♻️ Yeniden bağlanan: {names}"
+    added: "➕ Eklenen: {names}"
+    removed: "➖ Kaldırılan: {names}"
+    none_connected: "Bağlı MCP sunucusu yok."
+    tools_available: "\n🔧 {servers} sunucudan {tools} araç kullanılabilir"
+    failed: "❌ MCP yeniden yükleme başarısız: {error}"
 
   reload_skills:
-    header:                "🔄 **Beceriler Yeniden Yüklendi**\n"
-    no_new:                "Yeni beceri tespit edilmedi."
-    total:                 "\n📚 {count} beceri kullanılabilir"
-    added_header:          "➕ **Eklenen Beceriler:**"
-    removed_header:        "➖ **Kaldırılan Beceriler:**"
-    item_with_desc:        "    - {name}: {desc}"
-    item_no_desc:          "    - {name}"
-    failed:                "❌ Beceri yeniden yükleme başarısız: {error}"
+    header: "🔄 **Beceriler Yeniden Yüklendi**\n"
+    no_new: "Yeni beceri tespit edilmedi."
+    total: "\n📚 {count} beceri kullanılabilir"
+    added_header: "➕ **Eklenen Beceriler:**"
+    removed_header: "➖ **Kaldırılan Beceriler:**"
+    item_with_desc: "    - {name}: {desc}"
+    item_no_desc: "    - {name}"
+    failed: "❌ Beceri yeniden yükleme başarısız: {error}"
 
   reset:
-    header_default:        "✨ Oturum sıfırlandı! Yeniden başlıyoruz."
-    header_new:            "✨ Yeni oturum başlatıldı!"
-    header_titled:         "✨ Yeni oturum başlatıldı: {title}"
-    title_rejected:        "\n⚠️ Başlık reddedildi: {error}"
-    title_error_untitled:  "\n⚠️ {error} — oturum başlıksız başlatıldı."
-    title_empty_untitled:  "\n⚠️ Temizlik sonrası başlık boş — oturum başlıksız başlatıldı."
-    tip:                   "\n✦ İpucu: {tip}"
+    header_default: "✨ Oturum sıfırlandı! Yeniden başlıyoruz."
+    header_new: "✨ Yeni oturum başlatıldı!"
+    header_titled: "✨ Yeni oturum başlatıldı: {title}"
+    title_rejected: "\n⚠️ Başlık reddedildi: {error}"
+    title_error_untitled: "\n⚠️ {error} — oturum başlıksız başlatıldı."
+    title_empty_untitled: "\n⚠️ Temizlik sonrası başlık boş — oturum başlıksız başlatıldı."
+    tip: "\n✦ İpucu: {tip}"
 
   restart:
-    in_progress:           "⏳ Gateway yeniden başlatma zaten sürüyor..."
-    restarting:            "♻ Gateway yeniden başlatılıyor. 60 saniye içinde bildirim almazsanız konsoldan `hermes gateway restart` ile yeniden başlatın."
+    in_progress: "⏳ Gateway yeniden başlatma zaten sürüyor..."
+    restarting: "♻ Gateway yeniden başlatılıyor. 60 saniye içinde bildirim almazsanız
+      konsoldan `hermes gateway restart` ile yeniden başlatın."
 
   resume:
-    db_unavailable:        "Oturum veritabanı kullanılamıyor."
-    no_named_sessions:     "Adlandırılmış oturum bulunamadı.\nMevcut oturumu adlandırmak için `/title Oturumum`, daha sonra geri dönmek için `/resume Oturumum` kullanın."
-    list_header:           "📋 **Adlandırılmış Oturumlar**\n"
-    list_item:             "• **{title}**{preview_part}"
-    list_preview_suffix:   " — _{preview}_"
-    list_footer:           "\nKullanım: `/resume <oturum adı>`"
-    list_failed:           "Oturumlar listelenemedi: {error}"
-    not_found:             "'**{name}**' ile eşleşen oturum bulunamadı.\nKullanılabilir oturumları görmek için argümansız `/resume` kullanın."
-    already_on:            "📌 Zaten **{name}** oturumundasınız."
-    switch_failed:         "Oturum değiştirilemedi."
-    resumed_one:           "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri yüklendi."
-    resumed_many:          "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri yüklendi."
-    resumed_no_count:      "↻ **{title}** oturumu sürdürüldü. Konuşma geri yüklendi."
+    db_unavailable: "Oturum veritabanı kullanılamıyor."
+    no_named_sessions: "Adlandırılmış oturum bulunamadı.\nMevcut oturumu adlandırmak
+      için `/title Oturumum`, daha sonra geri dönmek için `/resume Oturumum` kullanın."
+    list_header: "📋 **Adlandırılmış Oturumlar**\n"
+    list_item: "• **{title}**{preview_part}"
+    list_preview_suffix: " — _{preview}_"
+    list_footer: "\nKullanım: `/resume <oturum adı>`"
+    list_failed: "Oturumlar listelenemedi: {error}"
+    not_found: "'**{name}**' ile eşleşen oturum bulunamadı.\nKullanılabilir oturumları
+      görmek için argümansız `/resume` kullanın."
+    already_on: "📌 Zaten **{name}** oturumundasınız."
+    switch_failed: "Oturum değiştirilemedi."
+    resumed_one: "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri yüklendi."
+    resumed_many: "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri
+      yüklendi."
+    resumed_no_count: "↻ **{title}** oturumu sürdürüldü. Konuşma geri yüklendi."
 
   retry:
-    no_previous:           "Yeniden denenecek önceki mesaj yok."
+    no_previous: "Yeniden denenecek önceki mesaj yok."
 
   rollback:
-    not_enabled:           "Kontrol noktaları etkin değil.\nconfig.yaml içinde etkinleştirin:\n```\ncheckpoints:\n  enabled: true\n```"
-    none_found:            "{cwd} için kontrol noktası bulunamadı"
-    invalid_number:        "Geçersiz kontrol noktası numarası. 1-{max} aralığını kullanın."
-    restored:              "✅ {hash} kontrol noktasına geri yüklendi: {reason}\nGeri alma öncesi anlık görüntü otomatik olarak kaydedildi."
-    restore_failed:        "❌ {error}"
+    not_enabled: "Kontrol noktaları etkin değil.\nconfig.yaml içinde etkinleştirin:\n\
+      ```\ncheckpoints:\n  enabled: true\n```"
+    none_found: "{cwd} için kontrol noktası bulunamadı"
+    invalid_number: "Geçersiz kontrol noktası numarası. 1-{max} aralığını kullanın."
+    restored: "✅ {hash} kontrol noktasına geri yüklendi: {reason}\nGeri alma öncesi
+      anlık görüntü otomatik olarak kaydedildi."
+    restore_failed: "❌ {error}"
 
   set_home:
-    save_failed:           "Ana kanal kaydedilemedi: {error}"
-    success:               "✅ Ana kanal **{name}** (ID: {chat_id}) olarak ayarlandı.\nCron işleri ve platformlar arası mesajlar buraya iletilecek."
+    save_failed: "Ana kanal kaydedilemedi: {error}"
+    success: "✅ Ana kanal **{name}** (ID: {chat_id}) olarak ayarlandı.\nCron işleri
+      ve platformlar arası mesajlar buraya iletilecek."
 
   status:
-    header:                "📊 **Hermes Gateway Durumu**"
-    session_id:            "**Oturum kimliği:** `{session_id}`"
-    title:                 "**Başlık:** {title}"
-    created:               "**Oluşturuldu:** {timestamp}"
-    last_activity:         "**Son etkinlik:** {timestamp}"
-    tokens:                "**Token:** {tokens}"
-    agent_running:         "**Aracı çalışıyor:** {state}"
-    state_yes:             "Evet ⚡"
-    state_no:              "Hayır"
-    queued:                "**Sıradaki devam:** {count}"
-    platforms:             "**Bağlı platformlar:** {platforms}"
+    header: "📊 **Hermes Gateway Durumu**"
+    session_id: "**Oturum kimliği:** `{session_id}`"
+    title: "**Başlık:** {title}"
+    created: "**Oluşturuldu:** {timestamp}"
+    last_activity: "**Son etkinlik:** {timestamp}"
+    tokens: "**Token:** {tokens}"
+    agent_running: "**Aracı çalışıyor:** {state}"
+    state_yes: "Evet ⚡"
+    state_no: "Hayır"
+    queued: "**Sıradaki devam:** {count}"
+    platforms: "**Bağlı platformlar:** {platforms}"
 
   stop:
-    stopped_pending:       "⚡ Durduruldu. Ajan henüz başlamamıştı — bu oturuma devam edebilirsin."
-    stopped:               "⚡ Durduruldu. Bu oturuma devam edebilirsin."
-    no_active:             "Durdurulacak aktif görev yok."
+    stopped_pending: "⚡ Durduruldu. Ajan henüz başlamamıştı — bu oturuma devam edebilirsin."
+    stopped: "⚡ Durduruldu. Bu oturuma devam edebilirsin."
+    no_active: "Durdurulacak aktif görev yok."
 
   title:
-    db_unavailable:        "Oturum veritabanı kullanılamıyor."
-    warn_prefix:           "⚠️ {error}"
-    empty_after_clean:     "⚠️ Temizlemeden sonra başlık boş. Lütfen yazdırılabilir karakterler kullanın."
-    set_to:                "✏️ Oturum başlığı ayarlandı: **{title}**"
-    not_found:             "Oturum veritabanında bulunamadı."
-    current_with_title:    "📌 Oturum: `{session_id}`\nBaşlık: **{title}**"
-    current_no_title:      "📌 Oturum: `{session_id}`\nBaşlık ayarlanmamış. Kullanım: `/title Oturum Adım`"
+    db_unavailable: "Oturum veritabanı kullanılamıyor."
+    warn_prefix: "⚠️ {error}"
+    empty_after_clean: "⚠️ Temizlemeden sonra başlık boş. Lütfen yazdırılabilir karakterler
+      kullanın."
+    set_to: "✏️ Oturum başlığı ayarlandı: **{title}**"
+    not_found: "Oturum veritabanında bulunamadı."
+    current_with_title: "📌 Oturum: `{session_id}`\nBaşlık: **{title}**"
+    current_no_title: "📌 Oturum: `{session_id}`\nBaşlık ayarlanmamış. Kullanım: `/title
+      Oturum Adım`"
 
   topic:
-    not_telegram_dm:         "/topic komutu yalnızca Telegram özel sohbetlerinde kullanılabilir."
-    no_session_db:           "Oturum veritabanı kullanılamıyor."
-    unauthorized:            "Bu bot üzerinde /topic kullanma yetkiniz yok."
-    restore_needs_topic:     "Bir oturumu geri yüklemek için önce bir Telegram topic oluşturun veya açın, ardından o topic içinde /topic <session-id> gönderin. Yeni bir topic oluşturmak için All Messages'ı açıp orada herhangi bir mesaj gönderin."
-    topics_disabled:         "Bu bot için Telegram topic'leri henüz etkin değil.\n\nNasıl etkinleştirilir:\n1. @BotFather'ı açın.\n2. Botunuzu seçin.\n3. Bot Settings → Threads Settings'ı açın.\n4. Threaded Mode'u açın ve kullanıcıların yeni thread oluşturmasına izin verildiğinden emin olun.\n\nArdından /topic'i tekrar gönderin."
-    topics_user_disallowed:  "Telegram topic'leri etkin, ancak kullanıcıların topic oluşturmasına izin verilmiyor.\n\n@BotFather → botunuz → Bot Settings → Threads Settings yolunu açın ve 'Disallow users to create new threads' seçeneğini kapatın.\n\nArdından /topic'i tekrar gönderin."
-    enable_failed:           "Telegram topic modu etkinleştirilemedi: {error}"
-    bound_status:            "Bu topic şuna bağlı:\nOturum: {label}\nID: {session_id}\n\nBu topic'i yeni bir oturumla değiştirmek için /new kullanın.\nParalel çalışma için All Messages'ı açıp orada bir mesaj göndererek başka bir topic oluşturun."
-    thread_ready:            "Telegram çok oturumlu topic'leri etkin.\n\nBu topic bağımsız bir Hermes oturumu olarak kullanılacak. Bu topic'in mevcut oturumunu değiştirmek için /new kullanın. Paralel çalışma için All Messages'ı açıp orada bir mesaj göndererek başka bir topic oluşturun."
-    untitled_session:        "Adsız oturum"
+    not_telegram_dm: "/topic komutu yalnızca Telegram özel sohbetlerinde kullanılabilir."
+    no_session_db: "Oturum veritabanı kullanılamıyor."
+    unauthorized: "Bu bot üzerinde /topic kullanma yetkiniz yok."
+    restore_needs_topic: "Bir oturumu geri yüklemek için önce bir Telegram topic oluşturun
+      veya açın, ardından o topic içinde /topic <session-id> gönderin. Yeni bir topic
+      oluşturmak için All Messages'ı açıp orada herhangi bir mesaj gönderin."
+    topics_disabled: "Bu bot için Telegram topic'leri henüz etkin değil.\n\nNasıl
+      etkinleştirilir:\n1. @BotFather'ı açın.\n2. Botunuzu seçin.\n3. Bot Settings
+      → Threads Settings'ı açın.\n4. Threaded Mode'u açın ve kullanıcıların yeni thread
+      oluşturmasına izin verildiğinden emin olun.\n\nArdından /topic'i tekrar gönderin."
+    topics_user_disallowed: "Telegram topic'leri etkin, ancak kullanıcıların topic
+      oluşturmasına izin verilmiyor.\n\n@BotFather → botunuz → Bot Settings → Threads
+      Settings yolunu açın ve 'Disallow users to create new threads' seçeneğini kapatın.\n\
+      \nArdından /topic'i tekrar gönderin."
+    enable_failed: "Telegram topic modu etkinleştirilemedi: {error}"
+    bound_status: "Bu topic şuna bağlı:\nOturum: {label}\nID: {session_id}\n\nBu topic'i
+      yeni bir oturumla değiştirmek için /new kullanın.\nParalel çalışma için All
+      Messages'ı açıp orada bir mesaj göndererek başka bir topic oluşturun."
+    thread_ready: "Telegram çok oturumlu topic'leri etkin.\n\nBu topic bağımsız bir
+      Hermes oturumu olarak kullanılacak. Bu topic'in mevcut oturumunu değiştirmek
+      için /new kullanın. Paralel çalışma için All Messages'ı açıp orada bir mesaj
+      göndererek başka bir topic oluşturun."
+    untitled_session: "Adsız oturum"
 
   undo:
-    nothing:               "Geri alınacak bir şey yok."
-    removed:               "↩️ {count} mesaj geri alındı.\nKaldırıldı: \"{preview}\""
+    nothing: "Geri alınacak bir şey yok."
+    removed: "↩️ {count} mesaj geri alındı.\nKaldırıldı: \"{preview}\""
 
   update:
-    platform_not_messaging:  "✗ /update yalnızca mesajlaşma platformlarında kullanılabilir. Terminalden `hermes update` komutunu çalıştırın."
-    not_git_repo:            "✗ Git deposu değil — güncellenemiyor."
-    hermes_cmd_not_found:    "✗ `hermes` komutu bulunamadı. Hermes çalışıyor, ancak güncelleme komutu yürütülebilir dosyayı PATH'te veya mevcut Python yorumlayıcısı aracılığıyla bulamadı. Terminalde `hermes update` komutunu manuel olarak çalıştırmayı deneyin."
-    start_failed:            "✗ Güncelleme başlatılamadı: {error}"
-    starting:                "⚕ Hermes güncellemesi başlatılıyor… İlerlemeyi buraya akıtacağım."
+    platform_not_messaging: "✗ /update yalnızca mesajlaşma platformlarında kullanılabilir.
+      Terminalden `hermes update` komutunu çalıştırın."
+    not_git_repo: "✗ Git deposu değil — güncellenemiyor."
+    hermes_cmd_not_found: "✗ `hermes` komutu bulunamadı. Hermes çalışıyor, ancak güncelleme
+      komutu yürütülebilir dosyayı PATH'te veya mevcut Python yorumlayıcısı aracılığıyla
+      bulamadı. Terminalde `hermes update` komutunu manuel olarak çalıştırmayı deneyin."
+    start_failed: "✗ Güncelleme başlatılamadı: {error}"
+    starting: "⚕ Hermes güncellemesi başlatılıyor… İlerlemeyi buraya akıtacağım."
 
   usage:
-    rate_limits:              "⏱️ **Hız Sınırları:** {state}"
-    header_session:           "📊 **Oturum Token Kullanımı**"
-    label_model:              "Model: `{model}`"
-    label_input_tokens:       "Girdi token'ları: {count}"
-    label_cache_read:         "Önbellek okuma token'ları: {count}"
-    label_cache_write:        "Önbellek yazma token'ları: {count}"
-    label_output_tokens:      "Çıktı token'ları: {count}"
-    label_total:              "Toplam: {count}"
-    label_api_calls:          "API çağrıları: {count}"
-    label_cost:               "Maliyet: {prefix}${amount}"
-    label_cost_included:      "Maliyet: dahil"
-    label_context:            "Bağlam: {used} / {total} ({pct}%)"
-    label_compressions:       "Sıkıştırmalar: {count}"
-    header_session_info:      "📊 **Oturum Bilgisi**"
-    label_messages:           "Mesajlar: {count}"
-    label_estimated_context:  "Tahmini bağlam: ~{count} token"
-    detailed_after_first:     "_(Ayrıntılı kullanım, ilk ajan yanıtından sonra kullanılabilir)_"
-    no_data:                  "Bu oturum için kullanım verisi yok."
+    rate_limits: "⏱️ **Hız Sınırları:** {state}"
+    header_session: "📊 **Oturum Token Kullanımı**"
+    label_model: "Model: `{model}`"
+    label_input_tokens: "Girdi token'ları: {count}"
+    label_cache_read: "Önbellek okuma token'ları: {count}"
+    label_cache_write: "Önbellek yazma token'ları: {count}"
+    label_output_tokens: "Çıktı token'ları: {count}"
+    label_total: "Toplam: {count}"
+    label_api_calls: "API çağrıları: {count}"
+    label_cost: "Maliyet: {prefix}${amount}"
+    label_cost_included: "Maliyet: dahil"
+    label_context: "Bağlam: {used} / {total} ({pct}%)"
+    label_compressions: "Sıkıştırmalar: {count}"
+    header_session_info: "📊 **Oturum Bilgisi**"
+    label_messages: "Mesajlar: {count}"
+    label_estimated_context: "Tahmini bağlam: ~{count} token"
+    detailed_after_first: "_(Ayrıntılı kullanım, ilk ajan yanıtından sonra kullanılabilir)_"
+    no_data: "Bu oturum için kullanım verisi yok."
 
   verbose:
-    not_enabled:           "`/verbose` komutu mesajlaşma platformlarında etkin değil.\n\n`config.yaml` içinde etkinleştirin:\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
-    mode_off:              "⚙️ Araç ilerlemesi: **OFF** — araç etkinliği gösterilmez."
-    mode_new:              "⚙️ Araç ilerlemesi: **NEW** — araç değiştiğinde gösterilir (önizleme uzunluğu: `display.tool_preview_length`, varsayılan 40)."
-    mode_all:              "⚙️ Araç ilerlemesi: **ALL** — her araç çağrısı gösterilir (önizleme uzunluğu: `display.tool_preview_length`, varsayılan 40)."
-    mode_verbose:          "⚙️ Araç ilerlemesi: **VERBOSE** — her araç çağrısı tüm argümanlarıyla gösterilir."
-    saved_suffix:          "_(**{platform}** için kaydedildi — sonraki mesajda geçerli olur)_"
-    save_failed:           "_(yapılandırmaya kaydedilemedi: {error})_"
+    not_enabled: "`/verbose` komutu mesajlaşma platformlarında etkin değil.\n\n`config.yaml`
+      içinde etkinleştirin:\n```yaml\ndisplay:\n  tool_progress_command: true\n```"
+    mode_off: "⚙️ Araç ilerlemesi: **OFF** — araç etkinliği gösterilmez."
+    mode_new: "⚙️ Araç ilerlemesi: **NEW** — araç değiştiğinde gösterilir (önizleme
+      uzunluğu: `display.tool_preview_length`, varsayılan 40)."
+    mode_all: "⚙️ Araç ilerlemesi: **ALL** — her araç çağrısı gösterilir (önizleme
+      uzunluğu: `display.tool_preview_length`, varsayılan 40)."
+    mode_verbose: "⚙️ Araç ilerlemesi: **VERBOSE** — her araç çağrısı tüm argümanlarıyla
+      gösterilir."
+    saved_suffix: "_(**{platform}** için kaydedildi — sonraki mesajda geçerli olur)_"
+    save_failed: "_(yapılandırmaya kaydedilemedi: {error})_"
 
   voice:
-    enabled_voice_only:    "Sesli mod etkinleştirildi.\nSesli mesaj gönderdiğinizde sesli yanıt vereceğim.\nTüm mesajlara sesli yanıt almak için /voice tts kullanın."
-    disabled_text:         "Sesli mod devre dışı. Yalnızca metin yanıtları."
-    tts_enabled:           "Otomatik TTS etkinleştirildi.\nTüm yanıtlar bir sesli mesaj içerecek."
-    status_mode:           "Sesli mod: {label}"
-    status_channel:        "Ses kanalı: #{channel}"
-    status_participants:   "Katılımcılar: {count}"
-    status_member:         "  - {name}{status}"
-    speaking:              " (konuşuyor)"
-    enabled_short:         "Sesli mod etkinleştirildi."
-    disabled_short:        "Sesli mod devre dışı."
-    label_off:             "Kapalı (yalnızca metin)"
-    label_voice_only:      "Açık (sesli mesajlara sesli yanıt)"
-    label_all:             "TTS (tüm mesajlara sesli yanıt)"
+    enabled_voice_only: "Sesli mod etkinleştirildi.\nSesli mesaj gönderdiğinizde sesli
+      yanıt vereceğim.\nTüm mesajlara sesli yanıt almak için /voice tts kullanın."
+    disabled_text: "Sesli mod devre dışı. Yalnızca metin yanıtları."
+    tts_enabled: "Otomatik TTS etkinleştirildi.\nTüm yanıtlar bir sesli mesaj içerecek."
+    status_mode: "Sesli mod: {label}"
+    status_channel: "Ses kanalı: #{channel}"
+    status_participants: "Katılımcılar: {count}"
+    status_member: "  - {name}{status}"
+    speaking: " (konuşuyor)"
+    enabled_short: "Sesli mod etkinleştirildi."
+    disabled_short: "Sesli mod devre dışı."
+    label_off: "Kapalı (yalnızca metin)"
+    label_voice_only: "Açık (sesli mesajlara sesli yanıt)"
+    label_all: "TTS (tüm mesajlara sesli yanıt)"
 
   yolo:
-    disabled:                   "⚠️ Bu oturumda YOLO modu **KAPALI** — tehlikeli komutlar onay gerektirecek."
-    enabled:                    "⚡ Bu oturumda YOLO modu **AÇIK** — tüm komutlar otomatik onaylanır. Dikkatli kullanın."
+    disabled: "⚠️ Bu oturumda YOLO modu **KAPALI** — tehlikeli komutlar onay gerektirecek."
+    enabled: "⚡ Bu oturumda YOLO modu **AÇIK** — tüm komutlar otomatik onaylanır.
+      Dikkatli kullanın."
 
   shared:
-    session_db_unavailable:      "Oturum veritabanı kullanılamıyor."
+    session_db_unavailable: "Oturum veritabanı kullanılamıyor."
     session_db_unavailable_prefix: "Oturum veritabanı kullanılamıyor"
-    session_not_found:           "Oturum veritabanında bulunamadı."
-    warn_passthrough:            "⚠️ {error}"
+    session_not_found: "Oturum veritabanında bulunamadı."
+    warn_passthrough: "⚠️ {error}"
+tool_progress:
+  tools:
+    browser_back: "browser_back"
+    browser_cdp: "browser_cdp"
+    browser_click: "browser_click"
+    browser_console: "browser_console"
+    browser_dialog: "browser_dialog"
+    browser_generic: "browser"
+    browser_get_images: "browser_get_images"
+    browser_navigate: "browser_navigate"
+    browser_press: "browser_press"
+    browser_scroll: "browser_scroll"
+    browser_snapshot: "browser_snapshot"
+    browser_type: "browser_type"
+    browser_vision: "browser_vision"
+    clarify: "clarify"
+    computer_use: "computer_use"
+    cronjob: "cronjob"
+    delegate_task: "delegate_task"
+    discord: "discord"
+    discord_admin: "discord_admin"
+    execute_code: "execute_code"
+    feishu_doc_read: "feishu_doc_read"
+    feishu_drive_add_comment: "feishu_drive_add_comment"
+    feishu_drive_list_comment_replies: "feishu_drive_list_comment_replies"
+    feishu_drive_list_comments: "feishu_drive_list_comments"
+    feishu_drive_reply_comment: "feishu_drive_reply_comment"
+    feishu_generic: "feishu"
+    generic: "tool"
+    ha_call_service: "ha_call_service"
+    ha_get_state: "ha_get_state"
+    ha_list_entities: "ha_list_entities"
+    ha_list_services: "ha_list_services"
+    homeassistant_generic: "homeassistant"
+    image_generate: "image_generate"
+    kanban_block: "kanban_block"
+    kanban_comment: "kanban_comment"
+    kanban_complete: "kanban_complete"
+    kanban_create: "kanban_create"
+    kanban_generic: "kanban"
+    kanban_heartbeat: "kanban_heartbeat"
+    kanban_link: "kanban_link"
+    kanban_list: "kanban_list"
+    kanban_show: "kanban_show"
+    kanban_unblock: "kanban_unblock"
+    memory: "memory"
+    mixture_of_agents: "mixture_of_agents"
+    patch: "patch"
+    process: "process"
+    read_file: "read_file"
+    rl_check_status: "rl_check_status"
+    rl_edit_config: "rl_edit_config"
+    rl_generic: "rl"
+    rl_get_current_config: "rl_get_current_config"
+    rl_get_results: "rl_get_results"
+    rl_list_environments: "rl_list_environments"
+    rl_list_runs: "rl_list_runs"
+    rl_select_environment: "rl_select_environment"
+    rl_start_training: "rl_start_training"
+    rl_stop_training: "rl_stop_training"
+    rl_test_inference: "rl_test_inference"
+    search_files: "search_files"
+    send_message: "send_message"
+    session_search: "session_search"
+    skill_manage: "skill_manage"
+    skill_view: "skill_view"
+    skills_list: "skills_list"
+    terminal: "terminal"
+    text_to_speech: "text_to_speech"
+    todo: "todo"
+    video_analyze: "video_analyze"
+    vision_analyze: "vision_analyze"
+    web_extract: "web_extract"
+    web_search: "web_search"
+    write_file: "write_file"
+    yb_query_group_info: "yb_query_group_info"
+    yb_query_group_members: "yb_query_group_members"
+    yb_search_sticker: "yb_search_sticker"
+    yb_send_dm: "yb_send_dm"
+    yb_send_sticker: "yb_send_sticker"
+    yuanbao_generic: "yuanbao"
+  args:
+    action: "action"
+    category: "category"
+    code: "code"
+    command: "command"
+    content: "content"
+    deliver: "deliver"
+    file_path: "file_path"
+    generic: "arg{index}"
+    goal: "goal"
+    message: "message"
+    model: "model"
+    name: "name"
+    path: "path"
+    pattern: "pattern"
+    prompt: "prompt"
+    query: "query"
+    question: "question"
+    ref: "ref"
+    schedule: "schedule"
+    session_id: "session_id"
+    target: "target"
+    text: "text"
+    timeout: "timeout"
+    url: "url"
+    urls: "urls"
+    user_prompt: "user_prompt"
+  memory_targets:
+    generic: "memory"
+    memory: "memory"
+    user: "user"
+  preview:
+    missing_old_text: "<missing old_text>"
+    memory_add: "+{target}: \"{content}\""
+    memory_remove: "-{target}: \"{old}\""
+    memory_replace: "~{target}: \"{old}\""
+    rl_get_current_config: "reading config"
+    rl_list_environments: "listing envs"
+    rl_list_runs: "listing runs"
+    rl_start_training: "starting"
+    rl_stop_training: "stopping {run_id}"
+    rl_test_inference: "{steps} steps"
+    send_message: "to {target}: \"{message}\""
+    session_search: "recall: \"{query}\""
+    todo_plan: "planning {count} task(s)"
+    todo_read: "reading task list"
+    todo_update: "updating {count} task(s)"
+
+gateway_runtime:
+  preflight_compression: "📦 Preflight compression: ~{tokens} tokens >= {threshold} threshold. This may take a moment."
+  compression_summary_failed: "⚠️ Compression summary failed: {error}. Inserted a fallback context marker."
+  compression_aux_model_failed: "ℹ️ Configured compression model `{model}` failed ({error}). Recovered using the main model — check `auxiliary.compression.model` in config.yaml."
+  compression_error_codex_timeout: "Codex auxiliary Responses stream exceeded {seconds}s total timeout"
+  compression_error_codex_interrupted: "Codex auxiliary Responses stream was interrupted"
+  compression_error_no_aux_provider: "no auxiliary LLM provider configured"
+  compression_error_peer_closed: "Provider/proxy closed the response stream before sending the complete message body"
+  compression_error_incomplete_chunked_read: "Response stream ended before the chunked body was complete"
+  compression_error_unknown: "unknown error"
+  session_compressed_warning: "⚠️  Session compressed {count} times — accuracy may degrade. Consider /new to start fresh."
+  compacting_context: "  ⟳ compacting context…"
+  background_complete: "✅ Background task complete\nPrompt: \"{preview}\""
+  background_failed: "❌ Background task {task_id} failed: {error}"
+  busy_command: "⏳ Agent is running — `/{command}` can't run mid-turn. Wait for the
+    current response or `/stop` first."
+  busy_goal: "Agent is running — use /goal status / pause / clear mid-run, or /stop
+    before setting a new goal."
+  busy_model: "Agent is running — wait or /stop first, then switch models."
+  default_hint: " (default: {default})"
+  gateway_online: "♻️ Gateway online — Hermes is back and ready."
+  generic_error: "Sorry, I encountered an error ({error_type}).\n{error_detail}\n\
+    {status_hint}Try again or use /reset to start a fresh session."
+  inactivity_warning: "⚠️ No activity for {elapsed} min. If the agent does not respond
+    soon, it will be timed out in {remaining} min. You can continue waiting or use
+    /reset."
+  iteration_status: "iteration {current}/{total}"
+  no_response: "(No response generated)"
+  queue_usage: "Usage: /queue <prompt>"
+  queued_next: "Queued for the next turn."
+  queued_next_count: "Queued for the next turn. ({count} queued)"
+  restart_success: "♻ Gateway restarted successfully. Your session continues."
+  running_tool_status: "running: {tool}"
+  session_too_large: "⚠️ Session too large for the model's context window.\nUse /compact
+    to compress the conversation, or /reset to start fresh."
+  status_401: "Check your API key or run `claude /login` to refresh OAuth credentials."
+  status_402: "Your API balance or quota is exhausted. Check your provider dashboard."
+  status_overloaded: "The API is temporarily overloaded. Please try again shortly."
+  status_rate_limited: "You are being rate-limited. Please wait a moment and try again."
+  status_request_rejected: "The request was rejected by the API."
+  status_usage_limit_reset: "Your plan's usage limit has been reached. It resets in
+    ~{hours}h."
+  status_usage_limit_wait: "Your plan's usage limit has been reached. Please wait
+    until it resets."
+  steer_agent_starting: "Agent still starting — /steer queued for the next turn."
+  steer_failed: "⚠️ Steer failed: {error}"
+  steer_no_active: "No active agent — /steer queued for the next turn."
+  steer_queued: "⏩ Steer queued — arrives after the next tool call: '{preview}'"
+  steer_rejected: "Steer rejected (empty payload)."
+  steer_usage: "Usage: /steer <prompt>"
+  still_working: "⏳ Still working... ({minutes} min elapsed{detail})"
+  update_failed_details: "❌ Hermes update failed. Check the gateway logs or run `hermes
+    update` manually for details."
+  update_failed_exit: "❌ Hermes update failed (exit code {exit_code})."
+  update_failed_with_output: "❌ Hermes update failed.\n\n```\n{output}\n```"
+  update_finished: "✅ Hermes update finished."
+  update_finished_success: "✅ Hermes update finished successfully."
+  update_finished_with_output: "✅ Hermes update finished.\n\n```\n{output}\n```"
+  update_needs_input: "⚕ **Update needs your input:**\n\n{prompt}{default_hint}\n\n\
+    Reply `/approve` (yes) or `/deny` (no), or type your answer directly."
+  update_timeout: "❌ Hermes update timed out after 30 minutes."
+
+  request_failed: "Sorry, I encountered an error:\n{error}"
+  processing_stopped: 'Processing stopped: {error}'
+  processing_no_response: Processing completed, but no response was generated.
+  elapsed_min: '{minutes} min elapsed'
+  busy_steered: ⏩ Steered into current run{status_detail}. Your message arrives
+    after the next tool call.
+  busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
+    current task finishes.
+  busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
+    your message shortly.
+  dangerous_command: dangerous command
+  command_approval_text: "⚠️ **Dangerous command requires approval:**\n```\n{command}\n\
+    ```\nReason: {reason}\n\nReply `/approve` to execute, `/approve session` to approve
+    this pattern for the session, `/approve always` to approve permanently, or `/deny`
+    to cancel."
+  telegram_topic_root_lobby: "This main chat is reserved for system commands.\n\n\
+    To start a new Hermes chat, open the All Messages topic at the top of this bot
+    interface and send any message there. Telegram will create a new topic for that
+    message; each topic works as an independent Hermes session."
+  telegram_topic_root_new: "To start a new parallel Hermes chat, open the All Messages
+    topic at the top of this bot interface and send any message there. Telegram will
+    create a new topic for it.\n\nEach topic is an independent Hermes session. Use
+    /new inside an existing topic only if you want to replace that topic's current
+    session."
+  telegram_topic_new_header: "Started a new Hermes session in this topic.\n\nTip:
+    for parallel work, open All Messages and send a message there to create a separate
+    topic instead of using /new here. /new replaces the session attached to the current
+    topic."
+  gateway_restarting_notice: "⚠️ Gateway restarting — Your current task will be interrupted.
+    Send any message after restart and I'll try to resume where you left off."
+  gateway_shutting_down_notice: "⚠️ Gateway shutting down — Your current task will
+    be interrupted."
+onboarding:
+  busy_input_cli_interrupt: "(tip) Your message interrupted the current run. Use /busy
+    queue to queue messages for the next turn instead, or /busy steer to inject mid-run.
+    This tip only shows once."
+  busy_input_cli_queue: "(tip) Your message was queued for the next turn. Use /busy
+    interrupt to make Enter stop the current run instead, or /busy steer to inject
+    mid-run. This tip only shows once."
+  busy_input_cli_steer: "(tip) Your message was steered into the current run; it arrives
+    after the next tool call. Use /busy interrupt or /busy queue to change this. This
+    tip only shows once."
+  busy_input_gateway_interrupt: "💡 First-time tip — I just interrupted my current
+    task to answer you. Send `/busy queue` to queue follow-ups for after the current
+    task instead, `/busy steer` to inject them mid-run without interrupting, or `/busy
+    status` to check. This notice won't appear again."
+  busy_input_gateway_queue: "💡 First-time tip — I queued your message instead of interrupting.
+    Send `/busy interrupt` to make new messages stop the current task immediately,
+    or `/busy status` to check. This notice won't appear again."
+  busy_input_gateway_steer: "💡 First-time tip — I steered your message into the current
+    run; it will arrive after the next tool call instead of interrupting. Send `/busy
+    interrupt` or `/busy queue` to change this, or `/busy status` to check. This notice
+    won't appear again."
+  tool_progress_cli: "(tip) That tool ran for a while. Use /verbose to cycle tool-progress
+    display modes (all -> new -> off -> verbose). This tip only shows once."
+  tool_progress_gateway: "💡 First-time tip — that tool took a while and I'm streaming
+    every step. If the progress messages feel noisy, send `/verbose` to cycle modes
+    (all → new → off). This notice won't appear again."
+
+telegram:
+  allow_once: "✅ Allow Once"
+  always: "✅ Always"
+  always_approve: "🔒 Always Approve"
+  approve_once: "✅ Approve Once"
+  button_no: "✗ No"
+  button_yes: "✓ Yes"
+  cancel: "❌ Cancel"
+  cancel_plain: "✗ Cancel"
+  command_approval_required: "⚠️ <b>Command Approval Required</b>\n\n<pre>{command}</pre>\n\
+    \nReason: {reason}"
+  default_hint: " (default: {default})"
+  deny: "❌ Deny"
+  model_configuration: "⚙ *Model Configuration*\n\nCurrent model: `{current_model}`\n\
+    Provider: {provider}\n\nSelect a provider:"
+  other_answer: "✏️ Other (type answer)"
+  session: "✅ Session"
+  unknown: "unknown"
+  update_input_title: "⚕ *Update needs your input:*\n\n{prompt}{default_hint}"
+  nav_prev: ◀ Prev
+  nav_next: Next ▶
+  nav_back: ◀ Back
+  page_info: ' ({start}–{end} of {total})'
+  model_selection: "⚙ *Model Configuration*\n\nProvider: *{provider}*{page_info}\n\
+    Select a model:{extra}"
+  model_more_available: "\n_{count} more available — type `/model <name>` directly_"
+  picker_expired_use_model: Picker expired — use /model again.
+  provider_not_found: Provider not found.
+  invalid_page: Invalid page.
+  invalid_selection: Invalid selection.
+  invalid_model_index: Invalid model index.
+  picker_expired: Picker expired.
+  model_switch_error: 'Error switching model: {error}'
+  model_switched: Model switched!
+  model_selection_cancelled: Model selection cancelled.
+  invalid_approval_data: Invalid approval data.
+  not_authorized_approve: ⛔ You are not authorized to approve commands.
+  approval_resolved: This approval has already been resolved.
+  approved_once: ✅ Approved once
+  approved_session: ✅ Approved for session
+  approved_permanent: ✅ Approved permanently
+  denied: ❌ Denied
+  cancelled: ❌ Cancelled
+  resolved: Resolved
+  user: User
+  decision_by: '{decision} by {user}'
+  not_authorized_prompt: ⛔ You are not authorized to answer this prompt.
+  prompt_resolved: This prompt has already been resolved.
+  type_answer: ✏️ Type your answer in the chat.
+  awaiting_typed_response: "❓ {question}\n\n<i>Awaiting typed response from {user}…</i>"
+  invalid_choice: Invalid choice.
+  choice_index: choice {index}
+  not_authorized_update: ⛔ You are not authorized to answer update prompts.
+  update_answer_sent: Sent '{answer}' to the update process.
+  update_prompt_answered: '⚕ Update prompt answered: *{label}*'
+  not_connected: Not connected
+  media_label_audio: Audio
+  media_label_image: Image
+  media_label_video: Video
+  media_label_document: Document
+  media_label_file: File
+  media_file_not_found: '{label} file not found: {path}'
+  media_docker_path_hint: ' (path may only exist inside the Docker sandbox. Bind-mount
+    a host directory and emit the host-visible path in MEDIA: for gateway file delivery.)'
+  location_pin_shared: "[The user shared a location pin.]"
+  location_venue: "Venue: {title}"
+  location_address: "Address: {address}"
+  location_latitude: "latitude: {lat}"
+  location_longitude: "longitude: {lon}"
+  location_map: "Map: https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+  location_followup_instruction: "Ask what they'd like to find nearby (restaurants,
+    cafes, etc.) and any preferences."
+  image_document_unreadable: "Image document '{name}' could not be read as an image."

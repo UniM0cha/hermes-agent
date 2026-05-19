@@ -84,6 +84,7 @@ from gateway.platforms.telegram_network import (
     parse_fallback_ip_env,
 )
 from utils import atomic_replace
+from agent.i18n import t
 
 _TELEGRAM_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _TELEGRAM_IMAGE_MIME_TO_EXT = {
@@ -1497,7 +1498,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Send a message to a Telegram chat."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
         
         # Skip whitespace-only text to prevent Telegram 400 empty-text errors.
         if not content or not content.strip():
@@ -1699,7 +1700,7 @@ class TelegramAdapter(BasePlatformAdapter):
         edits target the most recent visible message.
         """
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         # Pre-flight: if content already exceeds the limit, split-and-deliver
         # without round-tripping a doomed edit.
@@ -2035,7 +2036,7 @@ class TelegramAdapter(BasePlatformAdapter):
         same retry pattern to the non-streaming control paths.
         """
         if not self._bot:
-            raise RuntimeError("Not connected")
+            raise RuntimeError(t("telegram.not_connected"))
 
         message_thread_id = kwargs.get("message_thread_id")
         try:
@@ -2067,14 +2068,14 @@ class TelegramAdapter(BasePlatformAdapter):
         needs user input (stash restore, config migration).
         """
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
         try:
-            default_hint = f" (default: {default})" if default else ""
-            text = f"⚕ *Update needs your input:*\n\n{prompt}{default_hint}"
+            default_hint = t("telegram.default_hint", default=default) if default else ""
+            text = t("telegram.update_input_title", prompt=prompt, default_hint=default_hint)
             keyboard = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✓ Yes", callback_data="update_prompt:y"),
-                    InlineKeyboardButton("✗ No", callback_data="update_prompt:n"),
+                    InlineKeyboardButton(t("telegram.button_yes"), callback_data="update_prompt:y"),
+                    InlineKeyboardButton(t("telegram.button_no"), callback_data="update_prompt:n"),
                 ]
             ])
             thread_id = self._metadata_thread_id(metadata)
@@ -2109,14 +2110,14 @@ class TelegramAdapter(BasePlatformAdapter):
         agent thread — same mechanism as the text ``/approve`` flow.
         """
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             cmd_preview = command[:3800] + "..." if len(command) > 3800 else command
-            text = (
-                f"⚠️ <b>Command Approval Required</b>\n\n"
-                f"<pre>{_html.escape(cmd_preview)}</pre>\n\n"
-                f"Reason: {_html.escape(description)}"
+            text = t(
+                "telegram.command_approval_required",
+                command=_html.escape(cmd_preview),
+                reason=_html.escape(description),
             )
 
             # Resolve thread context for thread replies
@@ -2132,12 +2133,12 @@ class TelegramAdapter(BasePlatformAdapter):
 
             keyboard = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ Allow Once", callback_data=f"ea:once:{approval_id}"),
-                    InlineKeyboardButton("✅ Session", callback_data=f"ea:session:{approval_id}"),
+                    InlineKeyboardButton(t("telegram.allow_once"), callback_data=f"ea:once:{approval_id}"),
+                    InlineKeyboardButton(t("telegram.session"), callback_data=f"ea:session:{approval_id}"),
                 ],
                 [
-                    InlineKeyboardButton("✅ Always", callback_data=f"ea:always:{approval_id}"),
-                    InlineKeyboardButton("❌ Deny", callback_data=f"ea:deny:{approval_id}"),
+                    InlineKeyboardButton(t("telegram.always"), callback_data=f"ea:always:{approval_id}"),
+                    InlineKeyboardButton(t("telegram.deny"), callback_data=f"ea:deny:{approval_id}"),
                 ],
             ])
 
@@ -2175,7 +2176,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Render a three-button slash-command confirmation prompt."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             # Message body: render as plain text (message already contains
@@ -2184,11 +2185,11 @@ class TelegramAdapter(BasePlatformAdapter):
 
             keyboard = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ Approve Once", callback_data=f"sc:once:{confirm_id}"),
-                    InlineKeyboardButton("🔒 Always Approve", callback_data=f"sc:always:{confirm_id}"),
+                    InlineKeyboardButton(t("telegram.approve_once"), callback_data=f"sc:once:{confirm_id}"),
+                    InlineKeyboardButton(t("telegram.always_approve"), callback_data=f"sc:always:{confirm_id}"),
                 ],
                 [
-                    InlineKeyboardButton("❌ Cancel", callback_data=f"sc:cancel:{confirm_id}"),
+                    InlineKeyboardButton(t("telegram.cancel"), callback_data=f"sc:cancel:{confirm_id}"),
                 ],
             ])
 
@@ -2239,7 +2240,7 @@ class TelegramAdapter(BasePlatformAdapter):
         the gateway's text-intercept and resolves the clarify.
         """
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             text = f"❓ {_html.escape(question)}"
@@ -2268,7 +2269,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     ])
                 rows.append([
                     InlineKeyboardButton(
-                        "✏️ Other (type answer)",
+                        t("telegram.other_answer"),
                         callback_data=f"cl:{clarify_id}:other",
                     )
                 ])
@@ -2308,7 +2309,7 @@ class TelegramAdapter(BasePlatformAdapter):
         Edits the same message in-place as the user navigates.
         """
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             from hermes_cli.providers import get_label
@@ -2330,15 +2331,14 @@ class TelegramAdapter(BasePlatformAdapter):
                 )
 
             rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
-            rows.append([InlineKeyboardButton("✗ Cancel", callback_data="mx")])
+            rows.append([InlineKeyboardButton(t("telegram.cancel_plain"), callback_data="mx")])
             keyboard = InlineKeyboardMarkup(rows)
 
             provider_label = get_label(current_provider)
-            text = (
-                f"⚙ *Model Configuration*\n\n"
-                f"Current model: `{current_model or 'unknown'}`\n"
-                f"Provider: {provider_label}\n\n"
-                f"Select a provider:"
+            text = t(
+                "telegram.model_configuration",
+                current_model=current_model or t("telegram.unknown"),
+                provider=provider_label,
             )
 
             thread_id = metadata.get("thread_id") if metadata else None
@@ -2402,18 +2402,18 @@ class TelegramAdapter(BasePlatformAdapter):
         if total_pages > 1:
             nav: list = []
             if page > 0:
-                nav.append(InlineKeyboardButton("◀ Prev", callback_data=f"mg:{page - 1}"))
+                nav.append(InlineKeyboardButton(t("telegram.nav_prev"), callback_data=f"mg:{page - 1}"))
             nav.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="mx:noop"))
             if page < total_pages - 1:
-                nav.append(InlineKeyboardButton("Next ▶", callback_data=f"mg:{page + 1}"))
+                nav.append(InlineKeyboardButton(t("telegram.nav_next"), callback_data=f"mg:{page + 1}"))
             rows.append(nav)
 
         rows.append([
-            InlineKeyboardButton("◀ Back", callback_data="mb"),
-            InlineKeyboardButton("✗ Cancel", callback_data="mx"),
+            InlineKeyboardButton(t("telegram.nav_back"), callback_data="mb"),
+            InlineKeyboardButton(t("telegram.cancel_plain"), callback_data="mx"),
         ])
 
-        page_info = f" ({start + 1}–{end} of {total})" if total_pages > 1 else ""
+        page_info = t("telegram.page_info", start=start + 1, end=end, total=total) if total_pages > 1 else ""
         return InlineKeyboardMarkup(rows), page_info
 
     async def _handle_model_picker_callback(
@@ -2422,7 +2422,7 @@ class TelegramAdapter(BasePlatformAdapter):
         """Handle model picker inline keyboard callbacks (mp:/mm:/mb:/mx:/mg:)."""
         state = self._model_picker_state.get(chat_id)
         if not state:
-            await query.answer(text="Picker expired — use /model again.")
+            await query.answer(text=t("telegram.picker_expired_use_model"))
             return
 
         try:
@@ -2439,7 +2439,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 None,
             )
             if not provider:
-                await query.answer(text="Provider not found.")
+                await query.answer(text=t("telegram.provider_not_found"))
                 return
 
             models = provider.get("models", [])
@@ -2453,14 +2453,10 @@ class TelegramAdapter(BasePlatformAdapter):
             pname = provider.get("name", provider_slug)
             total = provider.get("total_models", len(models))
             shown = len(models)
-            extra = f"\n_{total - shown} more available — type `/model <name>` directly_" if total > shown else ""
+            extra = t("telegram.model_more_available", count=total - shown) if total > shown else ""
 
             await query.edit_message_text(
-                text=(
-                    f"⚙ *Model Configuration*\n\n"
-                    f"Provider: *{pname}*{page_info}\n"
-                    f"Select a model:{extra}"
-                ),
+                text=t("telegram.model_selection", provider=pname, page_info=page_info, extra=extra),
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=keyboard,
             )
@@ -2471,7 +2467,7 @@ class TelegramAdapter(BasePlatformAdapter):
             try:
                 page = int(data[3:])
             except ValueError:
-                await query.answer(text="Invalid page.")
+                await query.answer(text=t("telegram.invalid_page"))
                 return
 
             models = state.get("model_list", [])
@@ -2487,14 +2483,10 @@ class TelegramAdapter(BasePlatformAdapter):
             )
             total = provider.get("total_models", len(models)) if provider else len(models)
             shown = len(models)
-            extra = f"\n_{total - shown} more available — type `/model <name>` directly_" if total > shown else ""
+            extra = t("telegram.model_more_available", count=total - shown) if total > shown else ""
 
             await query.edit_message_text(
-                text=(
-                    f"⚙ *Model Configuration*\n\n"
-                    f"Provider: *{pname}*{page_info}\n"
-                    f"Select a model:{extra}"
-                ),
+                text=t("telegram.model_selection", provider=pname, page_info=page_info, extra=extra),
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=keyboard,
             )
@@ -2505,12 +2497,12 @@ class TelegramAdapter(BasePlatformAdapter):
             try:
                 idx = int(data[3:])
             except ValueError:
-                await query.answer(text="Invalid selection.")
+                await query.answer(text=t("telegram.invalid_selection"))
                 return
 
             model_list = state.get("model_list", [])
             if idx < 0 or idx >= len(model_list):
-                await query.answer(text="Invalid model index.")
+                await query.answer(text=t("telegram.invalid_model_index"))
                 return
 
             model_id = model_list[idx]
@@ -2518,14 +2510,14 @@ class TelegramAdapter(BasePlatformAdapter):
             callback = state.get("on_model_selected")
 
             if not callback:
-                await query.answer(text="Picker expired.")
+                await query.answer(text=t("telegram.picker_expired"))
                 return
 
             try:
                 result_text = await callback(chat_id, model_id, provider_slug)
             except Exception as exc:
                 logger.error("Model picker switch failed: %s", exc)
-                result_text = f"Error switching model: {exc}"
+                result_text = t("telegram.model_switch_error", error=exc)
 
             # Edit message to show confirmation, remove buttons
             try:
@@ -2544,7 +2536,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     )
                 except Exception:
                     pass
-            await query.answer(text="Model switched!")
+            await query.answer(text=t("telegram.model_switched"))
 
             # Clean up state
             self._model_picker_state.pop(chat_id, None)
@@ -2562,7 +2554,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 )
 
             rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
-            rows.append([InlineKeyboardButton("✗ Cancel", callback_data="mx")])
+            rows.append([InlineKeyboardButton(t("telegram.cancel_plain"), callback_data="mx")])
             keyboard = InlineKeyboardMarkup(rows)
 
             try:
@@ -2571,11 +2563,10 @@ class TelegramAdapter(BasePlatformAdapter):
                 provider_label = state["current_provider"]
 
             await query.edit_message_text(
-                text=(
-                    f"⚙ *Model Configuration*\n\n"
-                    f"Current model: `{state['current_model'] or 'unknown'}`\n"
-                    f"Provider: {provider_label}\n\n"
-                    f"Select a provider:"
+                text=t(
+                    "telegram.model_configuration",
+                    current_model=state['current_model'] or t("telegram.unknown"),
+                    provider=provider_label,
                 ),
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=keyboard,
@@ -2586,7 +2577,7 @@ class TelegramAdapter(BasePlatformAdapter):
             # --- Cancel ---
             self._model_picker_state.pop(chat_id, None)
             await query.edit_message_text(
-                text="Model selection cancelled.",
+                text=t("telegram.model_selection_cancelled"),
                 reply_markup=None,
             )
             await query.answer()
@@ -2625,7 +2616,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 try:
                     approval_id = int(parts[2])
                 except (ValueError, IndexError):
-                    await query.answer(text="Invalid approval data.")
+                    await query.answer(text=t("telegram.invalid_approval_data"))
                     return
 
                 # Only authorized users may click approval buttons.
@@ -2637,30 +2628,30 @@ class TelegramAdapter(BasePlatformAdapter):
                     thread_id=str(query_thread_id) if query_thread_id is not None else None,
                     user_name=query_user_name,
                 ):
-                    await query.answer(text="⛔ You are not authorized to approve commands.")
+                    await query.answer(text=t("telegram.not_authorized_approve"))
                     return
 
                 session_key = self._approval_state.pop(approval_id, None)
                 if not session_key:
-                    await query.answer(text="This approval has already been resolved.")
+                    await query.answer(text=t("telegram.approval_resolved"))
                     return
 
                 # Map choice to human-readable label
                 label_map = {
-                    "once": "✅ Approved once",
-                    "session": "✅ Approved for session",
-                    "always": "✅ Approved permanently",
-                    "deny": "❌ Denied",
+                    "once": t("telegram.approved_once"),
+                    "session": t("telegram.approved_session"),
+                    "always": t("telegram.approved_permanent"),
+                    "deny": t("telegram.denied"),
                 }
-                user_display = getattr(query.from_user, "first_name", "User")
-                label = label_map.get(choice, "Resolved")
+                user_display = getattr(query.from_user, "first_name", None) or t("telegram.user")
+                label = label_map.get(choice, t("telegram.resolved"))
 
                 await query.answer(text=label)
 
                 # Edit message to show decision, remove buttons
                 try:
                     await query.edit_message_text(
-                        text=f"{label} by {user_display}",
+                        text=t("telegram.decision_by", decision=label, user=user_display),
                         parse_mode=ParseMode.MARKDOWN,
                         reply_markup=None,
                     )
@@ -2694,27 +2685,27 @@ class TelegramAdapter(BasePlatformAdapter):
                     thread_id=str(query_thread_id) if query_thread_id is not None else None,
                     user_name=query_user_name,
                 ):
-                    await query.answer(text="⛔ You are not authorized to answer this prompt.")
+                    await query.answer(text=t("telegram.not_authorized_prompt"))
                     return
 
                 session_key = self._slash_confirm_state.pop(confirm_id, None)
                 if not session_key:
-                    await query.answer(text="This prompt has already been resolved.")
+                    await query.answer(text=t("telegram.prompt_resolved"))
                     return
 
                 label_map = {
-                    "once": "✅ Approved once",
-                    "always": "🔒 Always approve",
-                    "cancel": "❌ Cancelled",
+                    "once": t("telegram.approved_once"),
+                    "always": t("telegram.always_approve"),
+                    "cancel": t("telegram.cancelled"),
                 }
-                user_display = getattr(query.from_user, "first_name", "User")
-                label = label_map.get(choice, "Resolved")
+                user_display = getattr(query.from_user, "first_name", None) or t("telegram.user")
+                label = label_map.get(choice, t("telegram.resolved"))
 
                 await query.answer(text=label)
 
                 try:
                     await query.edit_message_text(
-                        text=f"{label} by {user_display}",
+                        text=t("telegram.decision_by", decision=label, user=user_display),
                         parse_mode=ParseMode.MARKDOWN,
                         reply_markup=None,
                     )
@@ -2792,15 +2783,15 @@ class TelegramAdapter(BasePlatformAdapter):
                     thread_id=str(query_thread_id) if query_thread_id is not None else None,
                     user_name=query_user_name,
                 ):
-                    await query.answer(text="⛔ You are not authorized to answer this prompt.")
+                    await query.answer(text=t("telegram.not_authorized_prompt"))
                     return
 
                 session_key = self._clarify_state.get(clarify_id)
                 if not session_key:
-                    await query.answer(text="This prompt has already been resolved.")
+                    await query.answer(text=t("telegram.prompt_resolved"))
                     return
 
-                user_display = getattr(query.from_user, "first_name", "User")
+                user_display = getattr(query.from_user, "first_name", None) or t("telegram.user")
 
                 if choice_token == "other":
                     # Flip into text-capture mode and tell the user to type
@@ -2815,10 +2806,14 @@ class TelegramAdapter(BasePlatformAdapter):
                     except Exception as exc:
                         logger.warning("[%s] mark_awaiting_text failed: %s", self.name, exc)
 
-                    await query.answer(text="✏️ Type your answer in the chat.")
+                    await query.answer(text=t("telegram.type_answer"))
                     try:
                         await query.edit_message_text(
-                            text=f"❓ {query.message.text or ''}\n\n<i>Awaiting typed response from {_html.escape(user_display)}…</i>",
+                            text=t(
+                                "telegram.awaiting_typed_response",
+                                question=_html.escape(query.message.text or ""),
+                                user=_html.escape(user_display),
+                            ),
                             parse_mode=ParseMode.HTML,
                             reply_markup=None,
                         )
@@ -2830,7 +2825,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 try:
                     idx = int(choice_token)
                 except (ValueError, TypeError):
-                    await query.answer(text="Invalid choice.")
+                    await query.answer(text=t("telegram.invalid_choice"))
                     return
 
                 # Look up the choice text from the entry registered in the
@@ -2849,7 +2844,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     # Race: entry vanished. Echo the index as a number so
                     # the agent at least sees an intentional response
                     # rather than nothing.
-                    resolved_text = f"choice {idx + 1}"
+                    resolved_text = t("telegram.choice_index", index=idx + 1)
 
                 # Pop state and resolve
                 self._clarify_state.pop(clarify_id, None)
@@ -2894,14 +2889,14 @@ class TelegramAdapter(BasePlatformAdapter):
             thread_id=str(query_thread_id) if query_thread_id is not None else None,
             user_name=query_user_name,
         ):
-            await query.answer(text="⛔ You are not authorized to answer update prompts.")
+            await query.answer(text=t("telegram.not_authorized_update"))
             return
-        await query.answer(text=f"Sent '{answer}' to the update process.")
+        await query.answer(text=t("telegram.update_answer_sent", answer=answer))
         # Edit the message to show the choice and remove buttons
-        label = "Yes" if answer == "y" else "No"
+        label = t("telegram.button_yes") if answer == "y" else t("telegram.button_no")
         try:
             await query.edit_message_text(
-                text=f"⚕ Update prompt answered: *{label}*",
+                text=t("telegram.update_prompt_answered", label=label),
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=None,
             )
@@ -2926,13 +2921,17 @@ class TelegramAdapter(BasePlatformAdapter):
         Paths like /workspace/... or /output/... often only exist inside the
         Docker sandbox, while the gateway process runs on the host.
         """
-        error = f"{label} file not found: {path}"
+        label_key = {
+            "Audio": "audio",
+            "Image": "image",
+            "Video": "video",
+            "Document": "document",
+            "File": "file",
+        }.get(label, "file")
+        localized_label = t(f"telegram.media_label_{label_key}")
+        error = t("telegram.media_file_not_found", label=localized_label, path=path)
         if path.startswith(("/workspace/", "/output/", "/outputs/")):
-            error += (
-                " (path may only exist inside the Docker sandbox. "
-                "Bind-mount a host directory and emit the host-visible "
-                "path in MEDIA: for gateway file delivery.)"
-            )
+            error += t("telegram.media_docker_path_hint")
         return error
 
     async def send_voice(
@@ -2946,7 +2945,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Send audio as a native Telegram voice message or audio file."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
         
         try:
             if not os.path.exists(audio_path):
@@ -3169,7 +3168,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Send a local image file natively as a Telegram photo."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             if not os.path.exists(image_path):
@@ -3262,7 +3261,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Send a document/file natively as a Telegram file attachment."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             if not os.path.exists(file_path):
@@ -3311,7 +3310,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Send a video natively as a Telegram video message."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         try:
             if not os.path.exists(video_path):
@@ -3360,7 +3359,7 @@ class TelegramAdapter(BasePlatformAdapter):
         Falls back to downloading and uploading as file (supports up to 10MB).
         """
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
 
         from tools.url_safety import is_safe_url
         if not is_safe_url(image_url):
@@ -3448,7 +3447,7 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         """Send an animated GIF natively as a Telegram animation (auto-plays inline)."""
         if not self._bot:
-            return SendResult(success=False, error="Not connected")
+            return SendResult(success=False, error=t("telegram.not_connected"))
         
         try:
             _anim_thread = self._metadata_thread_id(metadata)
@@ -4024,18 +4023,18 @@ class TelegramAdapter(BasePlatformAdapter):
             return
 
         # Build a text message with coordinates and context
-        parts = ["[The user shared a location pin.]"]
+        parts = [t("telegram.location_pin_shared")]
         if venue:
             title = getattr(venue, "title", None)
             address = getattr(venue, "address", None)
             if title:
-                parts.append(f"Venue: {title}")
+                parts.append(t("telegram.location_venue", title=title))
             if address:
-                parts.append(f"Address: {address}")
-        parts.append(f"latitude: {lat}")
-        parts.append(f"longitude: {lon}")
-        parts.append(f"Map: https://www.google.com/maps/search/?api=1&query={lat},{lon}")
-        parts.append("Ask what they'd like to find nearby (restaurants, cafes, etc.) and any preferences.")
+                parts.append(t("telegram.location_address", address=address))
+        parts.append(t("telegram.location_latitude", lat=lat))
+        parts.append(t("telegram.location_longitude", lon=lon))
+        parts.append(t("telegram.location_map", lat=lat, lon=lon))
+        parts.append(t("telegram.location_followup_instruction"))
 
         event = self._build_message_event(msg, MessageType.LOCATION, update_id=update.update_id)
         event.text = "\n".join(parts)
@@ -4331,9 +4330,9 @@ class TelegramAdapter(BasePlatformAdapter):
                         cached_path = cache_image_from_bytes(bytes(image_bytes), ext=image_ext)
                     except ValueError as e:
                         logger.warning("[Telegram] Failed to cache image document: %s", e, exc_info=True)
-                        event.text = (
-                            f"Image document '{original_filename or doc_mime or ext or 'unknown'}' "
-                            "could not be read as an image."
+                        event.text = t(
+                            "telegram.image_document_unreadable",
+                            name=original_filename or doc_mime or ext or t("telegram.unknown"),
                         )
                         await self.handle_message(event)
                         return

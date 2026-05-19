@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from functools import lru_cache
 from pathlib import Path
@@ -249,10 +250,48 @@ def t(key: str, lang: str | None = None, **format_kwargs: Any) -> str:
     return value
 
 
+_CODEX_AUX_TIMEOUT_RE = re.compile(
+    r"Codex auxiliary Responses stream exceeded (?P<seconds>[0-9]+(?:\.[0-9]+)?)s total timeout"
+)
+
+
+def localize_compression_error(error: Any) -> str:
+    """Return a localized user-facing summary for known compression errors.
+
+    Raw provider/transport exceptions are still logged in English. This helper
+    is only for gateway/CLI messages shown directly to users, where the outer
+    template may already be localized but the interpolated ``{error}`` detail
+    would otherwise remain English.
+    """
+    text = str(error or "").strip()
+    if not text or text.lower() == "unknown error":
+        return t("gateway_runtime.compression_error_unknown")
+
+    match = _CODEX_AUX_TIMEOUT_RE.search(text)
+    if match:
+        return t(
+            "gateway_runtime.compression_error_codex_timeout",
+            seconds=match.group("seconds"),
+        )
+
+    lowered = text.lower()
+    if "codex auxiliary responses stream interrupted" in lowered:
+        return t("gateway_runtime.compression_error_codex_interrupted")
+    if "no auxiliary llm provider configured" in lowered:
+        return t("gateway_runtime.compression_error_no_aux_provider")
+    if "peer closed connection" in lowered:
+        return t("gateway_runtime.compression_error_peer_closed")
+    if "incomplete chunked read" in lowered:
+        return t("gateway_runtime.compression_error_incomplete_chunked_read")
+
+    return text
+
+
 __all__ = [
     "SUPPORTED_LANGUAGES",
     "DEFAULT_LANGUAGE",
     "t",
     "get_language",
+    "localize_compression_error",
     "reset_language_cache",
 ]

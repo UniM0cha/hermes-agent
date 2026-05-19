@@ -191,6 +191,7 @@ from agent.trajectory import (
 )
 from utils import atomic_json_write, base_url_host_matches, base_url_hostname, env_var_enabled, normalize_proxy_url
 from hermes_cli.config import cfg_get
+from agent.i18n import localize_compression_error, t
 
 
 
@@ -10277,8 +10278,10 @@ class AIAgent:
             if getattr(self, "_last_compression_summary_warning", None) != summary_error:
                 self._last_compression_summary_warning = summary_error
                 self._emit_warning(
-                    f"⚠ Compression summary failed: {summary_error}. "
-                    "Inserted a fallback context marker."
+                    t(
+                        "gateway_runtime.compression_summary_failed",
+                        error=localize_compression_error(summary_error),
+                    )
                 )
         else:
             # No hard failure — but did the configured aux model error out
@@ -10293,9 +10296,11 @@ class AIAgent:
                 if getattr(self, "_last_aux_fallback_warning_key", None) != _aux_key:
                     self._last_aux_fallback_warning_key = _aux_key
                     self._emit_warning(
-                        f"ℹ Configured compression model '{_aux_fail_model}' failed "
-                        f"({_aux_fail_err or 'unknown error'}). Recovered using main model — "
-                        "check auxiliary.compression.model in config.yaml."
+                        t(
+                            "gateway_runtime.compression_aux_model_failed",
+                            model=_aux_fail_model,
+                            error=localize_compression_error(_aux_fail_err or "unknown error"),
+                        )
                     )
 
         todo_snapshot = self._todo_store.format_for_injection()
@@ -10382,8 +10387,7 @@ class AIAgent:
         _cc = self.context_compressor.compression_count
         if _cc >= 2:
             self._vprint(
-                f"{self.log_prefix}⚠️  Session compressed {_cc} times — "
-                f"accuracy may degrade. Consider /new to start fresh.",
+                f"{self.log_prefix}{t('gateway_runtime.session_compressed_warning', count=_cc)}",
                 force=True,
             )
 
@@ -11982,9 +11986,11 @@ class AIAgent:
                     f"{self.context_compressor.context_length:,}",
                 )
                 self._emit_status(
-                    f"📦 Preflight compression: ~{_preflight_tokens:,} tokens "
-                    f">= {self.context_compressor.threshold_tokens:,} threshold. "
-                    "This may take a moment."
+                    t(
+                        "gateway_runtime.preflight_compression",
+                        tokens=f"{_preflight_tokens:,}",
+                        threshold=f"{self.context_compressor.threshold_tokens:,}",
+                    )
                 )
                 # May need multiple passes for very large sessions with small
                 # context windows (each pass summarises the middle N turns).
@@ -14844,7 +14850,7 @@ class AIAgent:
                         )
 
                     if self.compression_enabled and _compressor.should_compress(_real_tokens):
-                        self._safe_print("  ⟳ compacting context…")
+                        self._safe_print(t("gateway_runtime.compacting_context"))
                         messages, active_system_prompt = self._compress_context(
                             messages, system_message,
                             approx_tokens=self.context_compressor.last_prompt_tokens,

@@ -35,8 +35,14 @@ def _no_compression_sleep(monkeypatch):
     compression, for rate-limit smoothing. Tests assert behavior, not timing.
     """
     import time as _time
+    from agent.i18n import reset_language_cache
+
+    monkeypatch.setenv("HERMES_LANGUAGE", "en")
+    reset_language_cache()
     monkeypatch.setattr(_time, "sleep", lambda *_a, **_k: None)
     monkeypatch.setattr(run_agent, "jittered_backoff", lambda *a, **k: 0.0)
+    yield
+    reset_language_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +472,113 @@ class TestPreflightCompression:
             ev == "lifecycle" and "Preflight compression" in msg
             for ev, msg in status_messages
         )
+
+    def test_preflight_status_uses_active_language(self, agent, monkeypatch):
+        """Preflight compression status should be localized for gateway users."""
+        from agent.i18n import reset_language_cache
+
+        monkeypatch.setenv("HERMES_LANGUAGE", "ko")
+        reset_language_cache()
+        try:
+            agent.compression_enabled = True
+            agent.context_compressor.context_length = 2000
+            agent.context_compressor.threshold_tokens = 200
+
+            big_history = []
+            for i in range(20):
+                big_history.append({"role": "user", "content": f"Message number {i} with some extra text padding"})
+                big_history.append({"role": "assistant", "content": f"Response number {i} with extra padding here"})
+
+            ok_resp = _mock_response(content="After preflight", finish_reason="stop")
+            agent.client.chat.completions.create.side_effect = [ok_resp]
+            status_messages = []
+            agent.status_callback = lambda ev, msg: status_messages.append((ev, msg))
+
+            with (
+                patch.object(agent, "_compress_context") as mock_compress,
+                patch.object(agent, "_persist_session"),
+                patch.object(agent, "_save_trajectory"),
+                patch.object(agent, "_cleanup_task_resources"),
+            ):
+                mock_compress.return_value = (
+                    [
+                        {"role": "user", "content": f"{SUMMARY_PREFIX}\nPrevious conversation"},
+                        {"role": "user", "content": "hello"},
+                    ],
+                    "new system prompt",
+                )
+                result = agent.run_conversation("hello", conversation_history=big_history)
+
+            assert result["completed"] is True
+            assert any(
+                ev == "lifecycle" and "사전 컨텍스트 압축" in msg and "잠시" in msg
+                for ev, msg in status_messages
+            )
+        finally:
+            reset_language_cache()
+
+    def test_compression_summary_warning_uses_active_language(self, agent, monkeypatch):
+        """Compression summary failure warning should be localized."""
+        from agent.i18n import reset_language_cache
+
+        monkeypatch.setenv("HERMES_LANGUAGE", "ko")
+        reset_language_cache()
+        try:
+            status_messages = []
+            agent.status_callback = lambda ev, msg: status_messages.append((ev, msg))
+            agent.context_compressor._last_summary_error = "boom"
+            agent.context_compressor.compress = MagicMock(
+                return_value=[{"role": "user", "content": "compressed"}]
+            )
+            agent.context_compressor.compression_count = 1
+
+            with patch.object(agent, "_build_system_prompt", return_value="new prompt"):
+                agent._compress_context(
+                    [{"role": "user", "content": "old"}],
+                    "system",
+                    approx_tokens=300,
+                )
+
+            assert any(
+                ev == "warn" and "압축 요약 생성 실패" in msg and "임시 컨텍스트 표시자" in msg
+                for ev, msg in status_messages
+            )
+        finally:
+            reset_language_cache()
+
+    def test_compression_summary_warning_localizes_known_error_detail(self, agent, monkeypatch):
+        """Known compression transport errors should not leak English details."""
+        from agent.i18n import reset_language_cache
+
+        monkeypatch.setenv("HERMES_LANGUAGE", "ko")
+        reset_language_cache()
+        try:
+            status_messages = []
+            agent.status_callback = lambda ev, msg: status_messages.append((ev, msg))
+            agent.context_compressor._last_summary_error = (
+                "Codex auxiliary Responses stream exceeded 300.0s total timeout"
+            )
+            agent.context_compressor.compress = MagicMock(
+                return_value=[{"role": "user", "content": "compressed"}]
+            )
+            agent.context_compressor.compression_count = 1
+
+            with patch.object(agent, "_build_system_prompt", return_value="new prompt"):
+                agent._compress_context(
+                    [{"role": "user", "content": "old"}],
+                    "system",
+                    approx_tokens=300,
+                )
+
+            warning_text = "\n".join(
+                msg for ev, msg in status_messages if ev == "warn"
+            )
+            assert "압축 요약 생성 실패" in warning_text
+            assert "총 300.0초 제한 시간" in warning_text
+            assert "Responses stream exceeded" not in warning_text
+            assert "total timeout" not in warning_text
+        finally:
+            reset_language_cache()
 
     def test_no_preflight_when_under_threshold(self, agent):
         """When history fits within context, no preflight compression needed."""
