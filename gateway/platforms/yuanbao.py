@@ -4376,18 +4376,22 @@ class MessageSender:
     @staticmethod
     def strip_cron_wrapper(content: str) -> str:
         """Strip scheduler cron header/footer wrapper for cleaner Yuanbao output."""
-        if not content.startswith("Cronjob Response: "):
+        known_headers = ("Cronjob Response: ", "크론잡 응답: ")
+        if not content.startswith(known_headers):
             return content
 
         divider = "\n-------------\n\n"
-        footer_prefix = '\n\nTo stop or manage this job, send me a new message (e.g. "stop reminder '
+        footer_prefixes = (
+            '\n\nTo stop or manage this job, send me a new message (e.g. "stop reminder ',
+            '\n\n이 작업을 중지하거나 관리하려면 새 메시지를 보내주세요. 예: "',
+        )
         divider_pos = content.find(divider)
-        footer_pos = content.rfind(footer_prefix)
+        footer_pos = max(content.rfind(prefix) for prefix in footer_prefixes)
         if divider_pos < 0 or footer_pos < 0 or footer_pos <= divider_pos:
             return content
 
         header = content[:divider_pos]
-        if "\n(job_id: " not in header:
+        if "\n(job_id: " not in header and "\n(작업 ID: " not in header:
             return content
 
         body_start = divider_pos + len(divider)

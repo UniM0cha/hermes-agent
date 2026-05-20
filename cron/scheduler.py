@@ -37,6 +37,7 @@ from typing import List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from hermes_constants import get_hermes_home
+from agent.i18n import t
 from hermes_cli.config import load_config, _expand_env_vars
 from hermes_time import now as _hermes_now
 
@@ -601,11 +602,11 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
         task_name = job.get("name", job["id"])
         job_id = job.get("id", "")
         delivery_content = (
-            f"Cronjob Response: {task_name}\n"
-            f"(job_id: {job_id})\n"
+            f"{t('gateway_runtime.cron_response_header', task_name=task_name)}\n"
+            f"{t('gateway_runtime.cron_response_job_id', job_id=job_id)}\n"
             f"-------------\n\n"
             f"{content}\n\n"
-            f"To stop or manage this job, send me a new message (e.g. \"stop reminder {task_name}\")."
+            f"{t('gateway_runtime.cron_manage_hint', task_name=task_name)}"
         )
     else:
         delivery_content = content

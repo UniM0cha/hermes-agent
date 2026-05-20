@@ -289,9 +289,7 @@ def compress_context(
         f"{approx_tokens:,}" if approx_tokens else "unknown", agent.model,
         focus_topic,
     )
-    agent._emit_status(
-        "🗜️ Compacting context — summarizing earlier conversation so I can continue..."
-    )
+    agent._emit_status(t("gateway_runtime.compacting_context_verbose"))
 
     # Notify external memory provider before compression discards context
     if agent._memory_manager:

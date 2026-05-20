@@ -7661,7 +7661,10 @@ class GatewayRunner:
             # multiple times, and without an explicit pointer the agent has to
             # guess (or answer for both subjects). Token overhead is minimal.
             reply_snippet = event.reply_to_text[:500]
-            message_text = f'[Replying to: "{reply_snippet}"]\n\n{message_text}'
+            message_text = (
+                t("gateway_runtime.reply_to_prefix", snippet=reply_snippet)
+                + f"\n\n{message_text}"
+            )
 
         if "@" in message_text:
             try:
@@ -16590,29 +16593,24 @@ class GatewayRunner:
 
             if _is_resume_pending:
                 _reason = getattr(_resume_entry, "resume_reason", None) or "restart_timeout"
-                _reason_phrase = (
-                    "a gateway restart"
+                _reason_key = (
+                    "gateway_runtime.interrupted_gateway_restart"
                     if _reason == "restart_timeout"
-                    else "a gateway shutdown"
+                    else "gateway_runtime.interrupted_gateway_shutdown"
                     if _reason == "shutdown_timeout"
-                    else "a gateway interruption"
+                    else "gateway_runtime.interrupted_gateway_generic"
                 )
                 message = (
-                    f"[System note: Your previous turn in this session was interrupted "
-                    f"by {_reason_phrase}. The conversation history below is intact. "
-                    f"If it contains unfinished tool result(s), process them first and "
-                    f"summarize what was accomplished, then address the user's new "
-                    f"message below.]\n\n"
-                    + message
+                    t(
+                        "gateway_runtime.system_note_interrupted_by_gateway",
+                        reason=t(_reason_key),
+                    )
+                    + f"\n\n{message}"
                 )
             elif _has_fresh_tool_tail:
                 message = (
-                    "[System note: Your previous turn was interrupted before you could "
-                    "process the last tool result(s). The conversation history contains "
-                    "tool outputs you haven't responded to yet. Please finish processing "
-                    "those results and summarize what was accomplished, then address the "
-                    "user's new message below.]\n\n"
-                    + message
+                    t("gateway_runtime.system_note_unprocessed_tool_results")
+                    + f"\n\n{message}"
                 )
 
             # Consume one-shot /reload-skills note (if the user ran
