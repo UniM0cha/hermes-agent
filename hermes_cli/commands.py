@@ -254,6 +254,73 @@ def _build_description(cmd: CommandDef) -> str:
     return cmd.description
 
 
+def _translate_with_fallback(key: str, fallback: str, **format_kwargs: Any) -> str:
+    """Translate *key*, returning *fallback* if the catalog key is missing.
+
+    ``agent.i18n.t()`` deliberately returns the key path on a miss so broken
+    catalogs are obvious.  Command menus, however, must remain presentable even
+    if a checkout has stale locale files.  Keep the fallback local to this
+    module so command registration never exposes ``commands.descriptions.foo``
+    to Telegram/Discord/Slack users.
+    """
+    try:
+        from agent.i18n import t
+
+        value = t(key, **format_kwargs)
+    except Exception:
+        value = key
+    if value == key:
+        try:
+            return fallback.format(**format_kwargs) if format_kwargs else fallback
+        except Exception:
+            return fallback
+    return value
+
+
+def localized_command_description(
+    cmd_or_name: CommandDef | str,
+    fallback: str | None = None,
+) -> str:
+    """Return the localized user-facing description for a slash command.
+
+    ``CommandDef.description`` remains the English source of truth for internal
+    registry metadata and backwards-compatible CLI constants.  Gateway-facing
+    surfaces (Telegram BotCommands, Discord slash picker, Slack manifest, and
+    /help) call this helper at runtime so ``display.language`` /
+    ``HERMES_LANGUAGE`` can localize the text.
+    """
+    if isinstance(cmd_or_name, CommandDef):
+        name = cmd_or_name.name
+        fallback_text = fallback or cmd_or_name.description
+    else:
+        raw_name = cmd_or_name.lower().lstrip("/")
+        cmd = resolve_command(raw_name)
+        fallback_text = fallback or (cmd.description if cmd else f"Run /{raw_name}")
+        # When a caller provides a fallback for an alias/platform-specific
+        # command (e.g. Discord's explicit /reset or /thread), prefer a
+        # matching catalog key for that visible command name.  Otherwise use
+        # the canonical registry name so aliases share the canonical text.
+        if cmd is not None and fallback is None:
+            name = cmd.name
+        else:
+            name = raw_name
+    return _translate_with_fallback(
+        f"commands.descriptions.{name}",
+        fallback_text,
+    )
+
+
+def localized_alias_description(cmd: CommandDef) -> str:
+    """Return the localized description used for first-class alias commands."""
+    description = localized_command_description(cmd)
+    return _translate_with_fallback(
+        "commands.alias_description",
+        "Alias for /{command} — {description}",
+        command=cmd.name,
+        description=description,
+    )
+
+
 # Backwards-compatible flat dict: "/command" -> description
 COMMANDS: dict[str, str] = {}
 for _cmd in COMMAND_REGISTRY:
@@ -428,6 +495,7 @@ def gateway_help_lines() -> list[str]:
     """Generate gateway help text lines from the registry."""
     overrides = _resolve_config_gates()
     lines: list[str] = []
+    alias_label = _translate_with_fallback("commands.alias_label", "alias")
     for cmd in COMMAND_REGISTRY:
         if not _is_gateway_available(cmd, overrides):
             continue
@@ -438,8 +506,8 @@ def gateway_help_lines() -> list[str]:
             if a.replace("-", "_") == cmd.name.replace("-", "_") and a != cmd.name:
                 continue
             alias_parts.append(f"`/{a}`")
-        alias_note = f" (alias: {', '.join(alias_parts)})" if alias_parts else ""
-        lines.append(f"`/{cmd.name}{args}` -- {cmd.description}{alias_note}")
+        alias_note = f" ({alias_label}: {', '.join(alias_parts)})" if alias_parts else ""
+        lines.append(f"`/{cmd.name}{args}` -- {localized_command_description(cmd)}{alias_note}")
     return lines
 
 
@@ -499,7 +567,7 @@ def telegram_bot_commands() -> list[tuple[str, str]]:
         # the menu hurts discoverability (issue #24312).
         tg_name = _sanitize_telegram_name(cmd.name)
         if tg_name:
-            result.append((tg_name, cmd.description))
+            result.append((tg_name, localized_command_description(cmd)))
     for name, description, args_hint in _iter_plugin_command_entries():
         if _requires_argument(args_hint):
             continue
@@ -991,7 +1059,14 @@ def slack_native_slashes() -> list[tuple[str, str, str]]:
     seen: set[str] = set()
 
     # Reserve /hermes as the catch-all top-level command.
-    entries.append(("hermes", "Talk to Hermes or run a subcommand", "[subcommand] [args]"))
+    entries.append((
+        "hermes",
+        _translate_with_fallback(
+            "commands.slack_hermes_description",
+            "Talk to Hermes or run a subcommand",
+        ),
+        "[subcommand] [args]",
+    ))
     seen.add("hermes")
 
     def _add(name: str, desc: str, hint: str) -> None:
@@ -1010,7 +1085,7 @@ def slack_native_slashes() -> list[tuple[str, str, str]]:
     for cmd in COMMAND_REGISTRY:
         if not _is_gateway_available(cmd, overrides):
             continue
-        _add(cmd.name, cmd.description, cmd.args_hint or "")
+        _add(cmd.name, localized_command_description(cmd), cmd.args_hint or "")
 
     # Second pass: aliases.
     for cmd in COMMAND_REGISTRY:
@@ -1019,7 +1094,7 @@ def slack_native_slashes() -> list[tuple[str, str, str]]:
         for alias in cmd.aliases:
             # Skip aliases that only differ from canonical by case/punctuation
             # normalization (already covered by _add dedup).
-            _add(alias, f"Alias for /{cmd.name} — {cmd.description}", cmd.args_hint or "")
+            _add(alias, localized_alias_description(cmd), cmd.args_hint or "")
 
     # Third pass: plugin commands.
     for name, description, args_hint in _iter_plugin_command_entries():
