@@ -583,6 +583,64 @@ async def test_post_connect_initialization_skips_same_fingerprint_after_success(
     fake_http.upsert_global_command.assert_awaited_once()
 
 
+def test_command_sync_does_not_skip_failed_new_fingerprint_attempt(tmp_path, monkeypatch):
+    """A failed sync attempt for a new fingerprint must not look successful."""
+    adapter = DiscordAdapter(PlatformConfig(enabled=True, token="test-token"))
+    monkeypatch.setattr("hermes_constants.get_hermes_home", lambda: tmp_path)
+
+    state_path = (
+        tmp_path
+        / discord_platform._DISCORD_COMMAND_SYNC_STATE_SUBDIR
+        / discord_platform._DISCORD_COMMAND_SYNC_STATE_FILENAME
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "999": {
+                    "fingerprint": "new-fingerprint",
+                    "last_attempt_at": 200.0,
+                    "last_success_at": 100.0,
+                    "summary": {"total": 47},
+                }
+            }
+        )
+    )
+
+    assert adapter._command_sync_skip_reason(999, "new-fingerprint") is None
+
+
+def test_record_command_sync_attempt_clears_stale_success_for_new_fingerprint(tmp_path, monkeypatch):
+    adapter = DiscordAdapter(PlatformConfig(enabled=True, token="test-token"))
+    monkeypatch.setattr("hermes_constants.get_hermes_home", lambda: tmp_path)
+
+    state_path = (
+        tmp_path
+        / discord_platform._DISCORD_COMMAND_SYNC_STATE_SUBDIR
+        / discord_platform._DISCORD_COMMAND_SYNC_STATE_FILENAME
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "999": {
+                    "fingerprint": "old-fingerprint",
+                    "last_attempt_at": 50.0,
+                    "last_success_at": 60.0,
+                    "summary": {"total": 47},
+                }
+            }
+        )
+    )
+
+    adapter._record_command_sync_attempt(999, "new-fingerprint")
+
+    entry = json.loads(state_path.read_text())["999"]
+    assert entry["fingerprint"] == "new-fingerprint"
+    assert "last_success_at" not in entry
+    assert "summary" not in entry
+
+
 @pytest.mark.asyncio
 async def test_post_connect_initialization_respects_discord_retry_after(tmp_path, monkeypatch):
     adapter = DiscordAdapter(PlatformConfig(enabled=True, token="test-token"))

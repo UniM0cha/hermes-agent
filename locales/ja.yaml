@@ -15,6 +15,21 @@ approval:
   cancelled: "      ✗ キャンセルしました"
   blocklist_message: "このコマンドは無条件ブロックリストに含まれており、承認できません。"
 
+  security_scan:
+    prefix: "Security scan"
+    summary: "Security scan: {summary}"
+    issue_detected: "security issue detected"
+    severity:
+      info: "INFO"
+      low: "LOW"
+      medium: "MEDIUM"
+      high: "HIGH"
+      critical: "CRITICAL"
+    findings:
+      lookalike_tld:
+        title: "Lookalike TLD detected"
+        description: "Domain uses '{tld}' TLD which can be confused with file extensions"
+
 gateway:
   approval_expired: "⚠️ 承認の有効期限が切れました（エージェントはもう待機していません）。エージェントに再試行を依頼してください。"
   draining: "⏳ 再起動前に {count} 個のアクティブエージェントの終了を待っています..."

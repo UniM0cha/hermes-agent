@@ -331,6 +331,29 @@ async def test_run_agent_progress_edits_keep_originating_topic_metadata(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_discord_progress_edits_keep_originating_thread_metadata(monkeypatch, tmp_path):
+    """Discord must pass thread metadata through progress edits, not only sends."""
+    adapter, result = await _run_with_agent(
+        monkeypatch,
+        tmp_path,
+        FakeAgent,
+        session_id="sess-discord-progress-edit-thread",
+        platform=Platform.DISCORD,
+        chat_id="100",
+        chat_type="group",
+        thread_id="200",
+        adapter_cls=MetadataEditProgressCaptureAdapter,
+    )
+
+    assert result["final_response"] == "done"
+    assert adapter.sent
+    assert adapter.sent[0]["metadata"] == {"thread_id": "200"}
+    assert adapter.edits
+    assert all(call["metadata"] == {"thread_id": "200"} for call in adapter.edits)
+    assert all(call["metadata"] == {"thread_id": "200"} for call in adapter.typing)
+
+
+@pytest.mark.asyncio
 async def test_run_agent_progress_does_not_use_event_message_id_for_telegram_dm(monkeypatch, tmp_path):
     """Telegram DM progress must not reuse event message id as thread metadata."""
     monkeypatch.setenv("HERMES_TOOL_PROGRESS_MODE", "all")
@@ -1208,3 +1231,28 @@ async def test_verbose_mode_respects_explicit_tool_preview_length(monkeypatch, t
     assert VerboseAgent.LONG_CODE not in all_content
     # But should still contain the truncated portion with "..."
     assert "..." in all_content
+
+
+@pytest.mark.asyncio
+async def test_discord_verbose_mode_caps_args_when_global_preview_is_unlimited(
+    monkeypatch, tmp_path
+):
+    """Discord progress bubbles should stay compact even with global preview=0."""
+    adapter, result = await _run_with_agent(
+        monkeypatch,
+        tmp_path,
+        VerboseAgent,
+        session_id="sess-discord-verbose-compact-default",
+        config_data={"display": {"tool_progress": "verbose", "tool_preview_length": 0}},
+        platform=Platform.DISCORD,
+        chat_id="discord-1",
+        chat_type="dm",
+        thread_id="",
+    )
+
+    assert result["final_response"] == "done"
+    all_content = " ".join(call["content"] for call in adapter.sent)
+    all_content += " ".join(call["content"] for call in adapter.edits)
+    assert VerboseAgent.LONG_CODE not in all_content
+    assert "..." in all_content
+    assert max(len(call["content"]) for call in adapter.sent + adapter.edits) <= 200

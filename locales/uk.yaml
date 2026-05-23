@@ -15,6 +15,21 @@ approval:
   cancelled: "      ✗ Скасовано"
   blocklist_message: "Ця команда є в безумовному списку блокування, її не можна схвалити."
 
+  security_scan:
+    prefix: "Security scan"
+    summary: "Security scan: {summary}"
+    issue_detected: "security issue detected"
+    severity:
+      info: "INFO"
+      low: "LOW"
+      medium: "MEDIUM"
+      high: "HIGH"
+      critical: "CRITICAL"
+    findings:
+      lookalike_tld:
+        title: "Lookalike TLD detected"
+        description: "Domain uses '{tld}' TLD which can be confused with file extensions"
+
 gateway:
   approval_expired: "⚠️ Час схвалення минув (агент більше не очікує). Попросіть агента
     спробувати ще раз."

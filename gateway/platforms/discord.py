@@ -190,6 +190,12 @@ class VoiceReceiver:
         # Debug logging counter (instance-level to avoid cross-instance races)
         self._packet_debug_count = 0
 
+        # Optional realtime streaming tap.  When set, decoded PCM is delivered
+        # immediately before utterance buffering/STT.  Realtime mode can disable
+        # utterance buffering to avoid duplicate local STT processing.
+        self._pcm_stream_callback: Optional[Callable[[int, int, bytes], None]] = None
+        self._buffer_utterances = True
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -225,6 +231,24 @@ class VoiceReceiver:
 
     def resume(self):
         self._paused = False
+
+    def set_pcm_stream_callback(
+        self,
+        callback: Optional[Callable[[int, int, bytes], None]],
+        *,
+        buffer_utterances: bool = True,
+    ) -> None:
+        """Install an optional decoded-PCM streaming callback.
+
+        ``callback`` receives ``(ssrc, user_id, pcm_48k_stereo)``.  When
+        ``buffer_utterances`` is False, decoded audio is not appended to the
+        normal silence-detected STT buffers.
+        """
+        with self._lock:
+            self._pcm_stream_callback = callback
+            self._buffer_utterances = buffer_utterances
+            if callback is None:
+                self._buffer_utterances = True
 
     # ------------------------------------------------------------------
     # SSRC -> user_id mapping via SPEAKING opcode hook
@@ -398,12 +422,35 @@ class VoiceReceiver:
             if ssrc not in self._decoders:
                 self._decoders[ssrc] = discord.opus.Decoder()
             pcm = self._decoders[ssrc].decode(decrypted)
+            self._emit_pcm_stream_callback(ssrc, pcm)
             with self._lock:
-                self._buffers[ssrc].extend(pcm)
+                if self._buffer_utterances:
+                    self._buffers[ssrc].extend(pcm)
                 self._last_packet_time[ssrc] = time.monotonic()
         except Exception as e:
             logger.debug("Opus decode error for SSRC %s: %s", ssrc, e)
             return
+
+    def _handle_decoded_pcm(self, ssrc: int, pcm: bytes) -> None:
+        """Route decoded PCM to realtime callback and/or utterance buffer."""
+        self._emit_pcm_stream_callback(ssrc, pcm)
+        with self._lock:
+            if self._buffer_utterances:
+                self._buffers[ssrc].extend(pcm)
+            self._last_packet_time[ssrc] = time.monotonic()
+
+    def _emit_pcm_stream_callback(self, ssrc: int, pcm: bytes) -> None:
+        """Deliver decoded PCM to the optional realtime stream callback."""
+        with self._lock:
+            user_id = self._ssrc_to_user.get(ssrc, 0)
+            callback = self._pcm_stream_callback
+        if not user_id:
+            user_id = self._infer_user_for_ssrc(ssrc)
+        if callback and user_id:
+            try:
+                callback(ssrc, int(user_id), pcm)
+            except Exception:
+                logger.warning("PCM stream callback failed for SSRC %s", ssrc, exc_info=True)
 
     # ------------------------------------------------------------------
     # Silence detection
@@ -573,6 +620,7 @@ class DiscordAdapter(BasePlatformAdapter):
         self._voice_listen_tasks: Dict[int, asyncio.Task] = {}  # guild_id -> listen loop
         self._voice_input_callback: Optional[Callable] = None  # set by run.py
         self._on_voice_disconnect: Optional[Callable] = None  # set by run.py
+        self._realtime_bridges: Dict[int, Any] = {}  # guild_id -> DiscordRealtimeBridge
         # Track threads where the bot has participated so follow-up messages
         # in those threads don't require @mention.  Persisted to disk so the
         # set survives gateway restarts.
@@ -950,18 +998,24 @@ class DiscordAdapter(BasePlatformAdapter):
         if retry_after_until > now:
             remaining = max(1, int(retry_after_until - now))
             return f"Discord asked us to wait before syncing slash commands; retry in {remaining}s"
-        if entry.get("fingerprint") == fingerprint and entry.get("last_success_at"):
+        last_success_at = float(entry.get("last_success_at") or 0)
+        last_attempt_at = float(entry.get("last_attempt_at") or 0)
+        if entry.get("fingerprint") == fingerprint and last_success_at and last_success_at >= last_attempt_at:
             return "same slash-command fingerprint already synced"
         return None
 
     def _record_command_sync_attempt(self, app_id: Any, fingerprint: str) -> None:
         state = self._read_command_sync_state()
-        state[self._command_sync_state_key(app_id)] = {
-            **(
-                state.get(self._command_sync_state_key(app_id))
-                if isinstance(state.get(self._command_sync_state_key(app_id)), dict)
-                else {}
-            ),
+        key = self._command_sync_state_key(app_id)
+        previous = state.get(key) if isinstance(state.get(key), dict) else {}
+        if previous.get("fingerprint") != fingerprint:
+            previous = {
+                k: v
+                for k, v in previous.items()
+                if k not in {"last_success_at", "summary"}
+            }
+        state[key] = {
+            **previous,
             "fingerprint": fingerprint,
             "last_attempt_at": time.time(),
         }
@@ -1367,6 +1421,30 @@ class DiscordAdapter(BasePlatformAdapter):
             elif outcome == ProcessingOutcome.FAILURE:
                 await self._add_reaction(message, "❌")
 
+    def _message_channel_id(
+        self,
+        chat_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Return the Discord channel/thread id that owns a message lifecycle call."""
+        if metadata and metadata.get("thread_id"):
+            return str(metadata["thread_id"])
+        return str(chat_id)
+
+    async def _resolve_channel_for_message_lifecycle(
+        self,
+        chat_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Resolve the channel/thread used for edit/delete of a sent message."""
+        if not self._client:
+            return None
+        channel_id = self._message_channel_id(chat_id, metadata)
+        channel = self._client.get_channel(int(channel_id))
+        if not channel:
+            channel = await self._client.fetch_channel(int(channel_id))
+        return channel
+
     async def send(
         self,
         chat_id: str,
@@ -1600,14 +1678,16 @@ class DiscordAdapter(BasePlatformAdapter):
         content: str,
         *,
         finalize: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Edit a previously sent Discord message."""
         if not self._client:
             return SendResult(success=False, error="Not connected")
         try:
-            channel = self._client.get_channel(int(chat_id))
+            channel = await self._resolve_channel_for_message_lifecycle(chat_id, metadata)
+            channel_id = self._message_channel_id(chat_id, metadata)
             if not channel:
-                channel = await self._client.fetch_channel(int(chat_id))
+                return SendResult(success=False, error=f"Channel {channel_id} not found")
             msg = await channel.fetch_message(int(message_id))
             formatted = self.format_message(content)
             if len(formatted) > self.MAX_MESSAGE_LENGTH:
@@ -1617,6 +1697,26 @@ class DiscordAdapter(BasePlatformAdapter):
         except Exception as e:  # pragma: no cover - defensive logging
             logger.error("[%s] Failed to edit Discord message %s: %s", self.name, message_id, e, exc_info=True)
             return SendResult(success=False, error=str(e))
+
+    async def delete_message(
+        self,
+        chat_id: str,
+        message_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Delete a previously sent Discord message, best-effort."""
+        if not self._client:
+            return False
+        try:
+            channel = await self._resolve_channel_for_message_lifecycle(chat_id, metadata)
+            if not channel:
+                return False
+            msg = await channel.fetch_message(int(message_id))
+            await msg.delete()
+            return True
+        except Exception as e:
+            logger.debug("[%s] Failed to delete Discord message %s: %s", self.name, message_id, e)
+            return False
 
     async def _send_file_attachment(
         self,
@@ -1925,6 +2025,7 @@ class DiscordAdapter(BasePlatformAdapter):
     async def leave_voice_channel(self, guild_id: int) -> None:
         """Disconnect from the voice channel in a guild."""
         async with self._voice_locks.setdefault(guild_id, asyncio.Lock()):
+            await self.stop_realtime_voice(guild_id)
             # Stop voice receiver first
             receiver = self._voice_receivers.pop(guild_id, None)
             if receiver:
@@ -1941,6 +2042,71 @@ class DiscordAdapter(BasePlatformAdapter):
                 task.cancel()
             self._voice_text_channels.pop(guild_id, None)
             self._voice_sources.pop(guild_id, None)
+
+    async def start_realtime_voice(
+        self,
+        guild_id: int,
+        controller_user_id: str,
+        text_channel_id: int,
+        source_data: dict,
+        runner,
+    ) -> tuple[bool, str]:
+        """Start OpenAI Realtime bridge for an already joined voice channel."""
+        bridges = getattr(self, "_realtime_bridges", None)
+        if not isinstance(bridges, dict):
+            bridges = {}
+            self._realtime_bridges = bridges
+        existing = bridges.pop(guild_id, None)
+        if existing is not None:
+            await existing.stop("restarting")
+
+        vc = self._voice_clients.get(guild_id)
+        if not vc or not vc.is_connected():
+            return False, "Bot is not connected to a Discord voice channel."
+        receiver = self._voice_receivers.get(guild_id)
+        if receiver is None:
+            return False, "Discord voice receiver is not active; reconnect the voice channel and try again."
+        text_channel = self._client.get_channel(text_channel_id) if self._client else None
+        if text_channel is None:
+            return False, "Could not find the bound Discord text channel."
+
+        try:
+            from hermes_cli.config import load_config
+            cfg = load_config().get("discord", {}).get("realtime", {}) or {}
+        except Exception:
+            cfg = {}
+        try:
+            from gateway.voice.discord_realtime_bridge import DiscordRealtimeBridge
+            bridge = DiscordRealtimeBridge(
+                guild_id=guild_id,
+                controller_user_id=controller_user_id,
+                voice_client=vc,
+                receiver=receiver,
+                text_channel=text_channel,
+                source_data=source_data,
+                runner=runner,
+                config=cfg,
+            )
+            ok, message = await bridge.start()
+        except Exception as exc:
+            logger.warning("Failed to start realtime voice bridge: %s", exc, exc_info=True)
+            return False, f"Failed to start Realtime voice: {exc}"
+        if ok:
+            bridges[guild_id] = bridge
+        return ok, message
+
+    async def stop_realtime_voice(self, guild_id: int) -> None:
+        """Stop the realtime bridge for a guild if active."""
+        bridges = getattr(self, "_realtime_bridges", None)
+        if not isinstance(bridges, dict):
+            return
+        bridge = bridges.pop(guild_id, None)
+        if bridge is not None:
+            await bridge.stop("stopped")
+
+    def is_realtime_voice(self, guild_id: int) -> bool:
+        bridges = getattr(self, "_realtime_bridges", None)
+        return isinstance(bridges, dict) and guild_id in bridges
 
     # Maximum seconds to wait for voice playback before giving up
     PLAYBACK_TIMEOUT = 120
@@ -2133,6 +2299,9 @@ class DiscordAdapter(BasePlatformAdapter):
                             vc._connection.send_packet(b'\xf8\xff\xfe')
                     except Exception:
                         pass
+
+                if self.is_realtime_voice(guild_id):
+                    continue
 
                 completed = receiver.check_silence()
                 # Voice inputs always originate from a specific guild
@@ -2996,12 +3165,15 @@ class DiscordAdapter(BasePlatformAdapter):
             await self._run_simple_slash(interaction, "/reload-skills")
 
         @tree.command(name="voice", description="Toggle voice reply mode")
-        @discord.app_commands.describe(mode="Voice mode: join, channel, leave, on, tts, off, or status")
+        @discord.app_commands.describe(mode="Voice mode: realtime, join, channel, leave, on, tts, off, or status")
         @discord.app_commands.choices(mode=[
             # `join` and `channel` both route to _handle_voice_channel_join in
             # gateway/run.py — expose both in the slash UI so autocomplete
             # matches what the docs advertise and what the runner accepts when
-            # the command is typed as plain text.
+            # the command is typed as plain text. `realtime`/`rt` start the
+            # OpenAI Realtime bridge instead of the local STT/TTS path.
+            discord.app_commands.Choice(name="realtime — join voice channel with OpenAI Realtime", value="realtime"),
+            discord.app_commands.Choice(name="rt — realtime voice alias", value="rt"),
             discord.app_commands.Choice(name="join — join your voice channel", value="join"),
             discord.app_commands.Choice(name="channel — join your voice channel (alias)", value="channel"),
             discord.app_commands.Choice(name="leave — leave voice channel", value="leave"),

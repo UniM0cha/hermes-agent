@@ -1638,6 +1638,7 @@ class BasePlatformAdapter(ABC):
         content: str,
         *,
         finalize: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """
         Edit a previously sent message. Optional — platforms that don't
@@ -1664,6 +1665,7 @@ class BasePlatformAdapter(ABC):
         self,
         chat_id: str,
         message_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Delete a previously sent message.  Optional — platforms that don't

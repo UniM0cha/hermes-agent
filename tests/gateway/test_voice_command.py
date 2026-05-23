@@ -262,6 +262,60 @@ class TestHandleVoiceCommand:
         assert runner._voice_mode["telegram:999"] == "voice_only"
         assert runner._voice_mode["slack:999"] == "off"
 
+    @pytest.mark.asyncio
+    async def test_voice_realtime_starts_discord_bridge(self, runner):
+        from gateway.config import Platform
+
+        event = _make_event("/voice realtime")
+        event.source.platform = Platform.DISCORD
+        event.raw_message = SimpleNamespace(guild_id=111, guild=None)
+        voice_channel = SimpleNamespace(name="General", guild=SimpleNamespace(id=111))
+        adapter = SimpleNamespace(
+            platform=Platform.DISCORD,
+            _voice_input_callback=None,
+            _on_voice_disconnect=None,
+            _voice_text_channels={},
+            _voice_sources={},
+            _auto_tts_disabled_chats=set(),
+            _auto_tts_enabled_chats=set(),
+            get_user_voice_channel=AsyncMock(return_value=voice_channel),
+            is_in_voice_channel=MagicMock(return_value=False),
+            join_voice_channel=AsyncMock(return_value=True),
+            start_realtime_voice=AsyncMock(return_value=(True, "Realtime voice started.")),
+        )
+        runner.adapters[Platform.DISCORD] = adapter
+
+        result = await runner._handle_voice_command(event)
+
+        assert "realtime" in result.lower()
+        adapter.join_voice_channel.assert_awaited_once_with(voice_channel)
+        adapter.start_realtime_voice.assert_awaited_once()
+        assert runner._voice_mode["discord:123"] == "realtime"
+        assert adapter._auto_tts_disabled_chats == {"123"}
+
+    @pytest.mark.asyncio
+    async def test_voice_realtime_off_stops_bridge_and_keeps_channel_mode(self, runner):
+        from gateway.config import Platform
+
+        event = _make_event("/voice realtime off")
+        event.source.platform = Platform.DISCORD
+        event.raw_message = SimpleNamespace(guild_id=111, guild=None)
+        runner._voice_mode["discord:123"] = "realtime"
+        adapter = SimpleNamespace(
+            platform=Platform.DISCORD,
+            _auto_tts_disabled_chats={"123"},
+            _auto_tts_enabled_chats=set(),
+            stop_realtime_voice=AsyncMock(),
+            is_in_voice_channel=MagicMock(return_value=True),
+        )
+        runner.adapters[Platform.DISCORD] = adapter
+
+        result = await runner._handle_voice_command(event)
+
+        adapter.stop_realtime_voice.assert_awaited_once_with(111)
+        assert "stopped" in result.lower()
+        assert runner._voice_mode["discord:123"] == "all"
+
 
 # =====================================================================
 # Auto voice reply decision logic
@@ -360,6 +414,10 @@ class TestAutoVoiceReply:
 
     def test_off_mode_text(self, runner):
         assert self._call(runner, "off", MessageType.TEXT) is False
+
+    def test_realtime_mode_never_uses_normal_tts_path(self, runner):
+        assert self._call(runner, "realtime", MessageType.TEXT) is False
+        assert self._call(runner, "realtime", MessageType.VOICE) is False
 
     # -- Discord VC exception: runner must handle --------------------------
 

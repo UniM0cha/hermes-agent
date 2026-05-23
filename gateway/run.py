@@ -1677,7 +1677,7 @@ class GatewayRunner:
         if not isinstance(data, dict):
             return {}
 
-        valid_modes = {"off", "voice_only", "all"}
+        valid_modes = {"off", "voice_only", "all", "realtime"}
         result = {}
         for chat_id, mode in data.items():
             if mode not in valid_modes:
@@ -10692,6 +10692,11 @@ class GatewayRunner:
 
         adapter = self.adapters.get(platform)
 
+        if args in {"realtime", "rt"}:
+            return await self._handle_voice_realtime_start(event)
+        if args in {"realtime off", "realtime disable", "rt off", "rt disable"}:
+            return await self._handle_voice_realtime_stop(event)
+
         if args in {"on", "enable"}:
             self._voice_mode[voice_key] = "voice_only"
             self._save_voice_modes()
@@ -10720,6 +10725,7 @@ class GatewayRunner:
                 "off": t("gateway.voice.label_off"),
                 "voice_only": t("gateway.voice.label_voice_only"),
                 "all": t("gateway.voice.label_all"),
+                "realtime": "Realtime voice",
             }
             # Append voice channel info if connected
             adapter = self.adapters.get(event.source.platform)
@@ -10804,6 +10810,94 @@ class GatewayRunner:
         adapter._voice_input_callback = None
         return "Failed to join voice channel. Check bot permissions (Connect + Speak)."
 
+    async def _handle_voice_realtime_start(self, event: MessageEvent) -> str:
+        """Start Discord OpenAI Realtime voice mode."""
+        adapter = self.adapters.get(event.source.platform)
+        if not hasattr(adapter, "start_realtime_voice"):
+            return "Realtime voice is only supported on Discord server voice channels."
+
+        guild_id = self._get_guild_id(event)
+        if not guild_id:
+            return "This command only works in a Discord server."
+
+        if not hasattr(adapter, "get_user_voice_channel"):
+            return "Voice channels are not supported on this platform."
+        voice_channel = await adapter.get_user_voice_channel(guild_id, event.source.user_id)
+        if not voice_channel:
+            return "You need to be in a voice channel first."
+
+        if hasattr(adapter, "_voice_input_callback"):
+            adapter._voice_input_callback = self._handle_voice_channel_input
+        if hasattr(adapter, "_on_voice_disconnect"):
+            adapter._on_voice_disconnect = self._handle_voice_timeout_cleanup
+
+        try:
+            connected = bool(
+                hasattr(adapter, "is_in_voice_channel")
+                and adapter.is_in_voice_channel(guild_id)
+            )
+        except Exception:
+            connected = False
+        if not connected:
+            try:
+                success = await adapter.join_voice_channel(voice_channel)
+            except Exception as e:
+                logger.warning("Failed to join voice channel for realtime: %s", e)
+                return f"Failed to join voice channel: {e}"
+            if not success:
+                return "Failed to join voice channel. Check bot permissions (Connect + Speak)."
+
+        try:
+            text_channel_id = int(event.source.chat_id)
+        except (TypeError, ValueError):
+            return "Discord text channel ID is invalid for realtime voice."
+        if hasattr(adapter, "_voice_text_channels"):
+            adapter._voice_text_channels[guild_id] = text_channel_id
+        if hasattr(adapter, "_voice_sources"):
+            adapter._voice_sources[guild_id] = event.source.to_dict()
+
+        ok, message = await adapter.start_realtime_voice(
+            guild_id,
+            str(event.source.user_id),
+            text_channel_id,
+            event.source.to_dict(),
+            self,
+        )
+        if not ok:
+            return message
+
+        voice_key = self._voice_key(event.source.platform, event.source.chat_id)
+        self._voice_mode[voice_key] = "realtime"
+        self._save_voice_modes()
+        self._set_adapter_auto_tts_disabled(adapter, event.source.chat_id, disabled=True)
+        self._set_adapter_auto_tts_enabled(adapter, event.source.chat_id, enabled=False)
+        return message or "Realtime voice started."
+
+    async def _handle_voice_realtime_stop(self, event: MessageEvent) -> str:
+        """Stop Discord Realtime voice while optionally keeping normal VC mode."""
+        adapter = self.adapters.get(event.source.platform)
+        guild_id = self._get_guild_id(event)
+        if not guild_id or not hasattr(adapter, "stop_realtime_voice"):
+            return "Realtime voice is not active."
+        await adapter.stop_realtime_voice(guild_id)
+        try:
+            connected = bool(
+                hasattr(adapter, "is_in_voice_channel")
+                and adapter.is_in_voice_channel(guild_id)
+            )
+        except Exception:
+            connected = False
+        voice_key = self._voice_key(event.source.platform, event.source.chat_id)
+        if connected:
+            self._voice_mode[voice_key] = "all"
+            self._set_adapter_auto_tts_disabled(adapter, event.source.chat_id, disabled=False)
+            self._set_adapter_auto_tts_enabled(adapter, event.source.chat_id, enabled=True)
+        else:
+            self._voice_mode[voice_key] = "off"
+            self._set_adapter_auto_tts_disabled(adapter, event.source.chat_id, disabled=True)
+        self._save_voice_modes()
+        return "Realtime voice stopped."
+
     async def _handle_voice_channel_leave(self, event: MessageEvent) -> str:
         """Leave the Discord voice channel."""
         adapter = self.adapters.get(event.source.platform)
@@ -10816,6 +10910,8 @@ class GatewayRunner:
             return "Not in a voice channel."
 
         try:
+            if hasattr(adapter, "stop_realtime_voice"):
+                await adapter.stop_realtime_voice(guild_id)
             await adapter.leave_voice_channel(guild_id)
         except Exception as e:
             logger.warning("Error leaving voice channel: %s", e)
@@ -10892,6 +10988,18 @@ class GatewayRunner:
 
         text_ch_id = adapter._voice_text_channels.get(guild_id)
         if not text_ch_id:
+            return
+
+        is_realtime = getattr(adapter, "is_realtime_voice", None)
+        has_explicit_realtime_method = (
+            callable(is_realtime)
+            and (
+                hasattr(type(adapter), "is_realtime_voice")
+                or "is_realtime_voice" in getattr(adapter, "__dict__", {})
+            )
+        )
+        if has_explicit_realtime_method and is_realtime(guild_id):
+            logger.debug("Ignoring local STT voice input while realtime voice is active for guild=%s", guild_id)
             return
 
         # Build source — reuse the linked text channel's metadata when available
@@ -15457,7 +15565,48 @@ class GatewayRunner:
             # Adapter doesn't support deletion — silently disable.
             _cleanup_progress = False
             _cleanup_adapter = None
-        _cleanup_msg_ids: List[str] = []
+        _cleanup_targets: List[Dict[str, Any]] = []
+        _cleanup_target_index: Dict[tuple[str, str], Dict[str, Any]] = {}
+
+        def _copy_cleanup_metadata(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+            return dict(value) if isinstance(value, dict) else value
+
+        def _track_cleanup_result(
+            result,
+            *,
+            metadata: Optional[Dict[str, Any]] = None,
+            chat_id: Optional[str] = None,
+        ) -> None:
+            """Track every temporary message id a SendResult created."""
+            if not (_cleanup_progress and getattr(result, "success", False)):
+                return
+            target_chat_id = str(chat_id or source.chat_id)
+            ids: List[str] = []
+            raw = getattr(result, "raw_response", None)
+            if isinstance(raw, dict) and isinstance(raw.get("message_ids"), list):
+                ids.extend(str(mid) for mid in raw["message_ids"] if mid)
+            mid = getattr(result, "message_id", None)
+            if mid:
+                ids.append(str(mid))
+            for cont in getattr(result, "continuation_message_ids", ()) or ():
+                if cont:
+                    ids.append(str(cont))
+
+            for mid in ids:
+                key = (target_chat_id, str(mid))
+                copied_metadata = _copy_cleanup_metadata(metadata)
+                existing_target = _cleanup_target_index.get(key)
+                if existing_target is not None:
+                    if not existing_target.get("metadata") and copied_metadata:
+                        existing_target["metadata"] = copied_metadata
+                    continue
+                target = {
+                    "chat_id": target_chat_id,
+                    "message_id": str(mid),
+                    "metadata": copied_metadata,
+                }
+                _cleanup_target_index[key] = target
+                _cleanup_targets.append(target)
         # First-touch onboarding latch: fires at most once per run, even if
         # several tools exceed the threshold.
         long_tool_hint_fired = [False]
@@ -15533,13 +15682,27 @@ class GatewayRunner:
             emoji = get_tool_emoji(tool_name, default="⚙️")
             tool_label = get_tool_display_name(tool_name)
             
-            # Verbose mode: show detailed arguments, respects tool_preview_length
+            def _gateway_progress_cap(*, verbose: bool) -> Optional[int]:
+                configured = get_tool_preview_max_len()
+                if configured > 0:
+                    return configured
+                if verbose and source.platform == Platform.DISCORD:
+                    return 120
+                if verbose:
+                    return None
+                return 40
+
+            # Verbose mode: show detailed arguments, respects tool_preview_length.
+            # Discord gets a gateway-local fallback cap because these progress
+            # bubbles persist in chat and Discord's hard message limit is 2000 chars.
             if progress_mode == "verbose":
+                _cap = _gateway_progress_cap(verbose=True)
                 if args:
-                    _pl = get_tool_preview_max_len()
-                    args_str = format_tool_args_for_display(args, max_len=_pl if _pl > 0 else None)
+                    args_str = format_tool_args_for_display(args, max_len=_cap)
                     msg = f"{emoji} {tool_label}\n{args_str}"
                 elif preview:
+                    if _cap is not None and len(preview) > _cap:
+                        preview = preview[:_cap - 3] + "..."
                     msg = f"{emoji} {tool_label}: \"{preview}\""
                 else:
                     msg = f"{emoji} {tool_label}..."
@@ -15550,8 +15713,7 @@ class GatewayRunner:
             # config (defaults to 40 chars when unset to keep gateway messages
             # compact — unlike CLI spinners, these persist as permanent messages).
             if preview:
-                _pl = get_tool_preview_max_len()
-                _cap = _pl if _pl > 0 else 40
+                _cap = _gateway_progress_cap(verbose=False) or 40
                 if len(preview) > _cap:
                     preview = preview[:_cap - 3] + "..."
                 msg = f"{emoji} {tool_label}: \"{preview}\""
@@ -15683,12 +15845,7 @@ class GatewayRunner:
                 return groups
 
             def _track_progress_result(result) -> None:
-                if (
-                    _cleanup_progress
-                    and getattr(result, "success", False)
-                    and getattr(result, "message_id", None)
-                ):
-                    _cleanup_msg_ids.append(str(result.message_id))
+                _track_cleanup_result(result, metadata=_progress_metadata)
 
             async def _send_progress_text(text: str):
                 result = await adapter.send(
@@ -15844,12 +16001,7 @@ class GatewayRunner:
                                 reply_to=_progress_reply_to,
                                 metadata=_progress_metadata,
                             )
-                            if (
-                                _cleanup_progress
-                                and getattr(_flood_result, "success", False)
-                                and getattr(_flood_result, "message_id", None)
-                            ):
-                                _cleanup_msg_ids.append(str(_flood_result.message_id))
+                            _track_progress_result(_flood_result)
                     else:
                         if can_edit:
                             # First tool: send all accumulated text as new message
@@ -15870,8 +16022,7 @@ class GatewayRunner:
                             )
                         if result.success and result.message_id:
                             progress_msg_id = result.message_id
-                            if _cleanup_progress:
-                                _cleanup_msg_ids.append(str(result.message_id))
+                            _track_progress_result(result)
 
                     _last_edit_ts = time.monotonic()
 
@@ -16011,9 +16162,11 @@ class GatewayRunner:
                         res = fut.result()
                     except Exception:
                         return
-                    mid = getattr(res, "message_id", None)
-                    if getattr(res, "success", False) and mid:
-                        _cleanup_msg_ids.append(str(mid))
+                    _track_cleanup_result(
+                        res,
+                        metadata=_status_thread_metadata,
+                        chat_id=_status_chat_id,
+                    )
                 _fut.add_done_callback(_track_status_id)
 
         def run_sync():
@@ -17014,12 +17167,11 @@ class GatewayRunner:
                         t("gateway_runtime.still_working", minutes=_elapsed_mins, detail=_status_detail),
                         metadata=_status_thread_metadata,
                     )
-                    if (
-                        _cleanup_progress
-                        and getattr(_notify_res, "success", False)
-                        and getattr(_notify_res, "message_id", None)
-                    ):
-                        _cleanup_msg_ids.append(str(_notify_res.message_id))
+                    _track_cleanup_result(
+                        _notify_res,
+                        metadata=_status_thread_metadata,
+                        chat_id=source.chat_id,
+                    )
                 except Exception as _ne:
                     logger.debug("Long-running notification error: %s", _ne)
 
@@ -17515,24 +17667,38 @@ class GatewayRunner:
         if (
             _cleanup_progress
             and _cleanup_adapter is not None
-            and _cleanup_msg_ids
+            and _cleanup_targets
             and session_key
             and isinstance(response, dict)
             and not response.get("failed")
             and hasattr(_cleanup_adapter, "register_post_delivery_callback")
         ):
-            _ids_snapshot = list(_cleanup_msg_ids)
-            _chat_id_snapshot = source.chat_id
+            _targets_snapshot = [dict(target) for target in _cleanup_targets]
             _adapter_snapshot = _cleanup_adapter
             _loop_snapshot = asyncio.get_running_loop()
+            try:
+                _delete_params = inspect.signature(_adapter_snapshot.delete_message).parameters
+                _delete_accepts_metadata = (
+                    "metadata" in _delete_params
+                    or any(
+                        param.kind is inspect.Parameter.VAR_KEYWORD
+                        for param in _delete_params.values()
+                    )
+                )
+            except (TypeError, ValueError):
+                _delete_accepts_metadata = False
 
             def _cleanup_temp_bubbles() -> None:
                 async def _delete_all() -> None:
-                    for _mid in _ids_snapshot:
+                    for _target in _targets_snapshot:
                         try:
-                            await _adapter_snapshot.delete_message(
-                                _chat_id_snapshot, _mid
-                            )
+                            kwargs = {
+                                "chat_id": _target["chat_id"],
+                                "message_id": _target["message_id"],
+                            }
+                            if _delete_accepts_metadata:
+                                kwargs["metadata"] = _target.get("metadata")
+                            await _adapter_snapshot.delete_message(**kwargs)
                         except Exception:
                             pass
                 try:

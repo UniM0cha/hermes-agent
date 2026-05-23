@@ -1382,6 +1382,50 @@ DEFAULT_CONFIG = {
         # real memory cost. Default 32 MiB matches the historical hardcoded
         # cap. Set to 0 for no cap. Env override: DISCORD_MAX_ATTACHMENT_BYTES.
         "max_attachment_bytes": 33554432,
+        # Realtime voice mode for Discord voice channels. Secrets are not kept
+        # in config.yaml; the bridge resolves HERMES_DISCORD_REALTIME_KEY,
+        # OPENAI_API_KEY, then HERMES_MEET_REALTIME_KEY from the environment.
+        "realtime": {
+            "enabled": True,
+            "model": "gpt-realtime-2",
+            "voice": "alloy",
+            "instructions": (
+                "Your name is 니코. You are the user's AI assistant in a Discord voice channel, running on the Hermes Agent runtime. "
+                "Do not introduce yourself as Hermes or Hermes Agent; introduce yourself as 니코 if a name is needed. "
+                "Respond in Korean polite speech (존댓말) unless the user asks otherwise; do not use 반말. "
+                "For direct voice replies, use 1-2 short sentences. Use short preambles only before tool work that may take noticeable time. "
+                "Ignore silence, background noise, TV/music, and side conversations unless the user clearly addresses you. "
+                "Confirm before risky actions, and use run_hermes_task for real work. "
+                "For quick conversational replies, answer directly in 1-2 short Korean polite sentences. "
+                "For tasks requiring tools, current facts, files, calendar, memory, web, code, or long reasoning, call run_hermes_task. "
+                "When run_hermes_task returns a job_id, keep the voice conversation available; "
+                "Hermes job results will be injected back into this conversation when they finish. "
+                "If the user asks about a running job, use get_hermes_task_status or list_hermes_tasks. "
+                "If the user asks to stop a running job, use cancel_hermes_task. "
+                "Do not claim a Hermes job is complete until its result is injected back into the conversation."
+            ),
+            "input_sample_rate": 24000,
+            "output_sample_rate": 24000,
+            "controller_only": True,
+            "tool_bridge_enabled": True,
+            "turn_detection": {
+                "type": "semantic_vad",
+                "eagerness": "high",
+                "create_response": True,
+                "interrupt_response": True,
+            },
+            "reasoning": {"effort": "low"},
+            # Discord may stop emitting RTP packets as soon as the user stops
+            # talking. Stream a short synthetic silence tail so Realtime VAD
+            # can observe end-of-turn and auto-create a response.
+            "silence_frame_ms": 100,
+            "trailing_silence_seconds": 3.0,
+            "progress_notice_first_seconds": 8.0,
+            "progress_notice_interval_seconds": 30.0,
+            "max_progress_notices_per_job": 3,
+            "max_pending_voice_notices": 10,
+            "max_session_seconds": 1800,
+        },
     },
 
     # WhatsApp platform settings (gateway mode)

@@ -15,6 +15,21 @@ approval:
   cancelled: "      ✗ 已取消"
   blocklist_message: "此指令位於無條件封鎖清單中，無法被批准。"
 
+  security_scan:
+    prefix: "Security scan"
+    summary: "Security scan: {summary}"
+    issue_detected: "security issue detected"
+    severity:
+      info: "INFO"
+      low: "LOW"
+      medium: "MEDIUM"
+      high: "HIGH"
+      critical: "CRITICAL"
+    findings:
+      lookalike_tld:
+        title: "Lookalike TLD detected"
+        description: "Domain uses '{tld}' TLD which can be confused with file extensions"
+
 gateway:
   approval_expired: "⚠️ 批准已逾期（代理不再等待）。請讓代理重試。"
   draining: "⏳ 正在等待 {count} 個活躍代理結束後重新啟動..."

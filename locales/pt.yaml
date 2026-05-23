@@ -16,6 +16,21 @@ approval:
   blocklist_message: "Este comando está na lista de bloqueio incondicional e não pode
     ser aprovado."
 
+  security_scan:
+    prefix: "Security scan"
+    summary: "Security scan: {summary}"
+    issue_detected: "security issue detected"
+    severity:
+      info: "INFO"
+      low: "LOW"
+      medium: "MEDIUM"
+      high: "HIGH"
+      critical: "CRITICAL"
+    findings:
+      lookalike_tld:
+        title: "Lookalike TLD detected"
+        description: "Domain uses '{tld}' TLD which can be confused with file extensions"
+
 gateway:
   approval_expired: "⚠️ A aprovação expirou (o agente já não está à espera). Peça
     ao agente para tentar novamente."
