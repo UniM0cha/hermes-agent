@@ -331,6 +331,15 @@ gateway:
     thread_ready: "Telegram 다중 세션 토픽이 활성화되었습니다.\n\n이 토픽은 독립된 Hermes 세션으로 사용됩니다. 이
       토픽의 현재 세션을 교체하려면 /new를 사용하세요. 병렬 작업을 위해서는 All Messages를 열고 메시지를 보내 다른 토픽을 만드세요."
     untitled_session: "제목 없는 세션"
+    root_enabled: "Telegram 다중 세션 토픽이 활성화되었습니다."
+    root_create_new: "새 Hermes 채팅을 만들려면 이 봇 화면 맨 위의 All Messages를 열고 그곳에 아무 메시지나 보내세요. Telegram이 새 토픽을 만들어줍니다."
+    root_previous_unlinked_header: "아직 연결되지 않은 이전 세션:"
+    root_restore_one_header: "복원하려면:"
+    root_restore_later_header: "나중에 이전 세션을 복원하려면:"
+    root_no_unlinked: "아직 연결되지 않은 이전 Telegram 세션이 없습니다."
+    root_restore_step_create_topic: "1. 토픽을 만들거나 엽니다. 새 토픽을 만들려면 All Messages를 열고 그곳에 아무 메시지나 보내세요."
+    root_restore_step_send_topic: "2. 해당 토픽 안에서 /topic <session-id>를 보내세요."
+    root_restore_example: "예시: 토픽 안에서 /topic {session_id}를 보내세요."
 
   undo:
     nothing: "되돌릴 내용이 없습니다."

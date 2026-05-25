@@ -386,6 +386,15 @@ gateway:
       Sitzung dieses Topics zu ersetzen. Für parallele Arbeit öffnen Sie All Messages
       und senden Sie dort eine Nachricht, um ein weiteres Topic zu erstellen."
     untitled_session: "Unbenannte Sitzung"
+    root_enabled: "Telegram multi-session topics are enabled."
+    root_create_new: "To create a new Hermes chat, open All Messages at the top of this bot interface and send any message there. Telegram will create a new topic for it."
+    root_previous_unlinked_header: "Previous unlinked sessions:"
+    root_restore_one_header: "To restore one:"
+    root_restore_later_header: "To restore a previous session later:"
+    root_no_unlinked: "No previous unlinked Telegram sessions found."
+    root_restore_step_create_topic: "1. Create or open a topic. To create a new one, open All Messages and send any message there."
+    root_restore_step_send_topic: "2. Send /topic <session-id> inside that topic."
+    root_restore_example: "Example: Send /topic {session_id} inside a topic."
 
   undo:
     nothing: "Nichts zum Rückgängigmachen."

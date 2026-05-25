@@ -12444,11 +12444,9 @@ class GatewayRunner:
 
     def _telegram_topic_root_status_message(self, source: SessionSource) -> str:
         lines = [
-            "Telegram multi-session topics are enabled.",
+            t("gateway.topic.root_enabled"),
             "",
-            "To create a new Hermes chat, open All Messages at the top of this "
-            "bot interface and send any message there. Telegram will create a "
-            "new topic for it.",
+            t("gateway.topic.root_create_new"),
             "",
         ]
         try:
@@ -12462,10 +12460,10 @@ class GatewayRunner:
             sessions = []
 
         if sessions:
-            lines.append("Previous unlinked sessions:")
+            lines.append(t("gateway.topic.root_previous_unlinked_header"))
             for session in sessions:
                 session_id = str(session.get("id") or "")
-                title = str(session.get("title") or "Untitled session")
+                title = str(session.get("title") or t("gateway.topic.untitled_session"))
                 preview = str(session.get("preview") or "").strip()
                 line = f"- {title} — `{session_id}`"
                 if preview:
@@ -12473,18 +12471,21 @@ class GatewayRunner:
                 lines.append(line)
             lines.extend([
                 "",
-                "To restore one:",
-                "1. Create or open a topic. To create a new one, open All Messages and send any message there.",
-                "2. Send /topic <session-id> inside that topic.",
-                f"Example: Send /topic {sessions[0].get('id')} inside a topic.",
+                t("gateway.topic.root_restore_one_header"),
+                t("gateway.topic.root_restore_step_create_topic"),
+                t("gateway.topic.root_restore_step_send_topic"),
+                t(
+                    "gateway.topic.root_restore_example",
+                    session_id=sessions[0].get("id"),
+                ),
             ])
         else:
             lines.extend([
-                "No previous unlinked Telegram sessions found.",
+                t("gateway.topic.root_no_unlinked"),
                 "",
-                "To restore a previous session later:",
-                "1. Create or open a topic. To create a new one, open All Messages and send any message there.",
-                "2. Send /topic <session-id> inside that topic.",
+                t("gateway.topic.root_restore_later_header"),
+                t("gateway.topic.root_restore_step_create_topic"),
+                t("gateway.topic.root_restore_step_send_topic"),
             ])
         return "\n".join(lines)
 

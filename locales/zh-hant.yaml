@@ -326,6 +326,15 @@ gateway:
     thread_ready: "Telegram 多工作階段 topics 已啟用。\n\n此 topic 將作為獨立的 Hermes 工作階段使用。使用 /new
       取代此 topic 目前的工作階段。如需平行作業，請開啟 All Messages 並在其中傳送訊息以建立另一個 topic。"
     untitled_session: "未命名工作階段"
+    root_enabled: "Telegram multi-session topics are enabled."
+    root_create_new: "To create a new Hermes chat, open All Messages at the top of this bot interface and send any message there. Telegram will create a new topic for it."
+    root_previous_unlinked_header: "Previous unlinked sessions:"
+    root_restore_one_header: "To restore one:"
+    root_restore_later_header: "To restore a previous session later:"
+    root_no_unlinked: "No previous unlinked Telegram sessions found."
+    root_restore_step_create_topic: "1. Create or open a topic. To create a new one, open All Messages and send any message there."
+    root_restore_step_send_topic: "2. Send /topic <session-id> inside that topic."
+    root_restore_example: "Example: Send /topic {session_id} inside a topic."
 
   undo:
     nothing: "沒有可復原的內容。"
