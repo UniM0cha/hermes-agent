@@ -20,7 +20,7 @@ import json
 import logging
 import os
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,14 @@ def run_codex_app_server_turn(
 
 
 
-def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta: callable = None):
+def run_codex_stream(
+    agent,
+    api_kwargs: dict,
+    client: Any = None,
+    on_first_delta: Callable | None = None,
+    *,
+    on_stream_event: Callable | None = None,
+):
     """Execute one streaming Responses API request and return the final response."""
     import httpx as _httpx
 
@@ -187,6 +194,51 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
     # returns empty output (e.g. chatgpt.com backend-api sends
     # response.incomplete instead of response.completed).
     agent._codex_streamed_text_parts: list = []
+
+    def _notify_event(event_type: str | None, *, progress: bool = False) -> None:
+        """Best-effort stream activity hook for the outer watchdog."""
+        if on_stream_event is None:
+            return
+        try:
+            on_stream_event(event_type or "unknown", progress=progress)
+        except Exception:
+            pass
+
+    def _event_value(event: Any, key: str, default: Any = None) -> Any:
+        value = getattr(event, key, default)
+        if value is default and isinstance(event, dict):
+            return event.get(key, default)
+        return value
+
+    def _event_type(event: Any) -> str:
+        value = _event_value(event, "type", "")
+        return value if isinstance(value, str) else ""
+
+    def _run_create_stream_fallback():
+        if on_stream_event is None:
+            return agent._run_codex_create_stream_fallback(
+                api_kwargs,
+                client=active_client,
+            )
+        return agent._run_codex_create_stream_fallback(
+            api_kwargs,
+            client=active_client,
+            on_stream_event=on_stream_event,
+        )
+
+    def _event_delta_text(event: Any) -> str:
+        delta = _event_value(event, "delta", "")
+        return delta if isinstance(delta, str) else ""
+
+    def _is_progress_event(event_type: str, event: Any) -> bool:
+        if "function_call" in event_type:
+            return True
+        if "output_text.delta" in event_type:
+            return bool(_event_delta_text(event))
+        if "reasoning" in event_type and "delta" in event_type:
+            return bool(_event_delta_text(event))
+        return False
+
     for attempt in range(max_stream_retries + 1):
         if agent._interrupt_requested:
             raise InterruptedError("Agent interrupted before Codex stream retry")
@@ -197,10 +249,14 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                     agent._touch_activity("receiving stream response")
                     if agent._interrupt_requested:
                         break
-                    event_type = getattr(event, "type", "")
+                    event_type = _event_type(event)
+                    _notify_event(
+                        event_type,
+                        progress=_is_progress_event(event_type, event),
+                    )
                     # Fire callbacks on text content deltas (suppress during tool calls)
                     if "output_text.delta" in event_type or event_type == "response.output_text.delta":
-                        delta_text = getattr(event, "delta", "")
+                        delta_text = _event_delta_text(event)
                         if delta_text:
                             agent._codex_streamed_text_parts.append(delta_text)
                         if delta_text and not has_tool_calls:
@@ -217,7 +273,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                         has_tool_calls = True
                     # Fire reasoning callbacks
                     elif "reasoning" in event_type and "delta" in event_type:
-                        reasoning_text = getattr(event, "delta", "")
+                        reasoning_text = _event_delta_text(event)
                         if reasoning_text:
                             agent._fire_reasoning_delta(reasoning_text)
                     # Collect completed output items — some backends
@@ -225,12 +281,12 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                     # via response.output_item.done but the SDK's
                     # get_final_response() returns an empty output list.
                     elif event_type == "response.output_item.done":
-                        done_item = getattr(event, "item", None)
+                        done_item = _event_value(event, "item", None)
                         if done_item is not None:
                             collected_output_items.append(done_item)
                     # Log non-completed terminal events for diagnostics
                     elif event_type in {"response.incomplete", "response.failed"}:
-                        resp_obj = getattr(event, "response", None)
+                        resp_obj = _event_value(event, "response", None)
                         status = getattr(resp_obj, "status", None) if resp_obj else None
                         incomplete_details = getattr(resp_obj, "incomplete_details", None) if resp_obj else None
                         logger.warning(
@@ -280,7 +336,7 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                 agent._client_log_context(),
                 exc,
             )
-            return agent._run_codex_create_stream_fallback(api_kwargs, client=active_client)
+            return _run_create_stream_fallback()
         except RuntimeError as exc:
             err_text = str(exc)
             missing_completed = "response.completed" in err_text
@@ -327,12 +383,18 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                     agent._client_log_context(),
                     err_text,
                 )
-                return agent._run_codex_create_stream_fallback(api_kwargs, client=active_client)
+                return _run_create_stream_fallback()
             raise
 
 
 
-def run_codex_create_stream_fallback(agent, api_kwargs: dict, client: Any = None):
+def run_codex_create_stream_fallback(
+    agent,
+    api_kwargs: dict,
+    client: Any = None,
+    *,
+    on_stream_event: Callable | None = None,
+):
     """Fallback path for stream completion edge cases on Codex-style Responses backends."""
     active_client = client or agent._ensure_primary_openai_client(reason="codex_create_stream_fallback")
     fallback_kwargs = dict(api_kwargs)
@@ -349,12 +411,40 @@ def run_codex_create_stream_fallback(agent, api_kwargs: dict, client: Any = None
     terminal_response = None
     collected_output_items: list = []
     collected_text_deltas: list = []
+
+    def _notify_event(event_type: str | None, *, progress: bool = False) -> None:
+        if on_stream_event is None:
+            return
+        try:
+            on_stream_event(event_type or "unknown", progress=progress)
+        except Exception:
+            pass
+
     try:
         for event in stream_or_response:
             agent._touch_activity("receiving stream response")
             event_type = getattr(event, "type", None)
             if not event_type and isinstance(event, dict):
                 event_type = event.get("type")
+
+            fallback_delta = getattr(event, "delta", "")
+            if not fallback_delta and isinstance(event, dict):
+                fallback_delta = event.get("delta", "")
+            fallback_progress = bool(
+                ("function_call" in str(event_type or ""))
+                or (
+                    "output_text.delta" in str(event_type or "")
+                    and isinstance(fallback_delta, str)
+                    and fallback_delta
+                )
+                or (
+                    "reasoning" in str(event_type or "")
+                    and "delta" in str(event_type or "")
+                    and isinstance(fallback_delta, str)
+                    and fallback_delta
+                )
+            )
+            _notify_event(event_type, progress=fallback_progress)
 
             # ``error`` SSE frames carry the provider's real failure
             # reason (subscription / quota / model-not-available /

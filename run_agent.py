@@ -51,7 +51,7 @@ import threading
 from types import SimpleNamespace
 import urllib.request
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from urllib.parse import urlparse, parse_qs, urlunparse
 # NOTE: `from openai import OpenAI` is deliberately NOT at module top — the
 # SDK pulls ~240 ms of imports. We expose `OpenAI` as a thin proxy object
@@ -2552,15 +2552,37 @@ class AIAgent:
     def _close_request_openai_client(self, client: Any, *, reason: str) -> None:
         self._close_openai_client(client, reason=reason, shared=False)
 
-    def _run_codex_stream(self, api_kwargs: dict, client: Any = None, on_first_delta: callable = None):
+    def _run_codex_stream(
+        self,
+        api_kwargs: dict,
+        client: Any = None,
+        on_first_delta: Callable | None = None,
+        on_stream_event: Callable | None = None,
+    ):
         """Forwarder — see ``agent.codex_runtime.run_codex_stream``."""
         from agent.codex_runtime import run_codex_stream
-        return run_codex_stream(self, api_kwargs, client, on_first_delta)
+        return run_codex_stream(
+            self,
+            api_kwargs,
+            client,
+            on_first_delta,
+            on_stream_event=on_stream_event,
+        )
 
-    def _run_codex_create_stream_fallback(self, api_kwargs: dict, client: Any = None):
+    def _run_codex_create_stream_fallback(
+        self,
+        api_kwargs: dict,
+        client: Any = None,
+        on_stream_event: Callable | None = None,
+    ):
         """Forwarder — see ``agent.codex_runtime.run_codex_create_stream_fallback``."""
         from agent.codex_runtime import run_codex_create_stream_fallback
-        return run_codex_create_stream_fallback(self, api_kwargs, client)
+        return run_codex_create_stream_fallback(
+            self,
+            api_kwargs,
+            client,
+            on_stream_event=on_stream_event,
+        )
 
     def _try_refresh_codex_client_credentials(self, *, force: bool = True) -> bool:
         if self.api_mode != "codex_responses" or self.provider not in {"openai-codex", "xai-oauth"}:

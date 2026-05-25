@@ -1,4 +1,6 @@
 import sys
+import threading
+import time
 import types
 from types import SimpleNamespace
 
@@ -157,9 +159,10 @@ def _codex_ack_message_response(text: str):
 
 
 class _FakeResponsesStream:
-    def __init__(self, *, final_response=None, final_error=None):
+    def __init__(self, *, final_response=None, final_error=None, events=None):
         self._final_response = final_response
         self._final_error = final_error
+        self._events = list(events or [])
 
     def __enter__(self):
         return self
@@ -168,7 +171,7 @@ class _FakeResponsesStream:
         return False
 
     def __iter__(self):
-        return iter(())
+        return iter(self._events)
 
     def get_final_response(self):
         if self._final_error is not None:
@@ -196,6 +199,141 @@ def _codex_request_kwargs():
         "tools": None,
         "store": False,
     }
+
+
+def _install_codex_interruptible_test_hooks(agent, monkeypatch, *, stale_timeout=0.05):
+    """Install fast deterministic hooks for interruptible Codex timeout tests."""
+    closed = threading.Event()
+    close_reasons = []
+    statuses = []
+    activities = []
+    client = SimpleNamespace(name="request-client")
+
+    monkeypatch.setattr(
+        agent,
+        "_compute_non_stream_stale_timeout",
+        lambda messages: stale_timeout,
+    )
+    monkeypatch.setattr(
+        agent,
+        "_create_request_openai_client",
+        lambda **kwargs: client,
+    )
+
+    def _close_request_client(request_client, *, reason):
+        close_reasons.append(reason)
+        closed.set()
+
+    monkeypatch.setattr(agent, "_close_request_openai_client", _close_request_client)
+    monkeypatch.setattr(agent, "_emit_status", lambda text: statuses.append(text))
+    monkeypatch.setattr(agent, "_touch_activity", lambda desc: activities.append(desc))
+    return closed, close_reasons, statuses, activities
+
+
+def test_codex_interruptible_times_out_when_no_stream_events(monkeypatch):
+    from agent.chat_completion_helpers import interruptible_api_call
+
+    agent = _build_agent(monkeypatch)
+    closed, close_reasons, statuses, _activities = _install_codex_interruptible_test_hooks(
+        agent, monkeypatch, stale_timeout=0.03
+    )
+
+    def _fake_codex_stream(api_kwargs, client=None, on_first_delta=None, **kwargs):
+        closed.wait(5.0)
+        raise RuntimeError("provider connection closed after stale timeout")
+
+    monkeypatch.setattr(agent, "_run_codex_stream", _fake_codex_stream)
+
+    with pytest.raises(TimeoutError) as exc_info:
+        interruptible_api_call(agent, _codex_request_kwargs())
+
+    message = str(exc_info.value)
+    assert "no provider events" in message
+    assert "300" not in message
+    assert "stale_call_kill" in close_reasons
+    assert any("No provider events" in status for status in statuses)
+
+
+def test_codex_interruptible_uses_active_timeout_after_stream_event(monkeypatch):
+    from agent.chat_completion_helpers import interruptible_api_call
+
+    agent = _build_agent(monkeypatch)
+    initial_timeout = 0.03
+    active_timeout = 0.16
+    monkeypatch.setenv("HERMES_CODEX_ACTIVE_STALE_TIMEOUT", str(active_timeout))
+    closed, close_reasons, statuses, activities = _install_codex_interruptible_test_hooks(
+        agent, monkeypatch, stale_timeout=initial_timeout
+    )
+    event_seen = threading.Event()
+
+    def _fake_codex_stream(
+        api_kwargs,
+        client=None,
+        on_first_delta=None,
+        on_stream_event=None,
+    ):
+        assert on_stream_event is not None
+        on_stream_event("response.in_progress", progress=False)
+        event_seen.set()
+        closed.wait(5.0)
+        raise RuntimeError("provider connection closed after stale timeout")
+
+    monkeypatch.setattr(agent, "_run_codex_stream", _fake_codex_stream)
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError) as exc_info:
+        interruptible_api_call(agent, _codex_request_kwargs())
+    elapsed = time.monotonic() - started
+
+    assert event_seen.is_set()
+    assert elapsed >= active_timeout
+    assert elapsed < 3.0
+    message = str(exc_info.value)
+    assert "after provider event response.in_progress" in message
+    assert "stale_call_kill" in close_reasons
+    assert any("response.in_progress" in status for status in statuses)
+    assert any("Codex stream active" in activity for activity in activities)
+
+
+def test_codex_interruptible_resets_active_timeout_on_repeated_events(monkeypatch):
+    from agent.chat_completion_helpers import interruptible_api_call
+
+    agent = _build_agent(monkeypatch)
+    initial_timeout = 0.03
+    active_timeout = 0.16
+    monkeypatch.setenv("HERMES_CODEX_ACTIVE_STALE_TIMEOUT", str(active_timeout))
+    closed, _close_reasons, _statuses, _activities = _install_codex_interruptible_test_hooks(
+        agent, monkeypatch, stale_timeout=initial_timeout
+    )
+    event_times = []
+
+    def _fake_codex_stream(
+        api_kwargs,
+        client=None,
+        on_first_delta=None,
+        on_stream_event=None,
+    ):
+        assert on_stream_event is not None
+        for event_type in [
+            "response.in_progress",
+            "response.reasoning_summary_text.delta",
+            "response.output_text.delta",
+        ]:
+            event_times.append(time.monotonic())
+            on_stream_event(event_type, progress="delta" in event_type)
+            closed.wait(0.08)
+        closed.wait(5.0)
+        raise RuntimeError("provider connection closed after stale timeout")
+
+    monkeypatch.setattr(agent, "_run_codex_stream", _fake_codex_stream)
+
+    with pytest.raises(TimeoutError):
+        interruptible_api_call(agent, _codex_request_kwargs())
+    elapsed_after_last_event = time.monotonic() - event_times[-1]
+
+    assert len(event_times) == 3
+    assert elapsed_after_last_event >= active_timeout
+    assert elapsed_after_last_event < 3.0
 
 
 def test_api_mode_uses_explicit_provider_when_codex(monkeypatch):
@@ -398,6 +536,46 @@ def test_build_api_kwargs_copilot_responses_omits_reasoning_for_non_reasoning_mo
     assert "prompt_cache_key" not in kwargs
 
 
+def test_run_codex_stream_reports_provider_events_to_callback(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    seen_events = []
+
+    def _fake_stream(**kwargs):
+        return _FakeResponsesStream(
+            final_response=_codex_message_response("stream ok"),
+            events=[
+                SimpleNamespace(type="response.created"),
+                SimpleNamespace(type="response.in_progress"),
+                {"type": "response.reasoning_summary_text.delta", "delta": "thinking"},
+                {"type": "response.output_text.delta", "delta": "hi"},
+                {"type": "response.function_call_arguments.delta", "delta": "{}"},
+            ],
+        )
+
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(
+            stream=_fake_stream,
+            create=lambda **kwargs: _codex_message_response("fallback"),
+        )
+    )
+
+    response = agent._run_codex_stream(
+        _codex_request_kwargs(),
+        on_stream_event=lambda event_type, *, progress=False: seen_events.append(
+            (event_type, progress)
+        ),
+    )
+
+    assert response.output[0].content[0].text == "stream ok"
+    assert seen_events == [
+        ("response.created", False),
+        ("response.in_progress", False),
+        ("response.reasoning_summary_text.delta", True),
+        ("response.output_text.delta", True),
+        ("response.function_call_arguments.delta", True),
+    ]
+
+
 def test_run_codex_stream_retries_when_completed_event_missing(monkeypatch):
     agent = _build_agent(monkeypatch)
     calls = {"stream": 0}
@@ -452,10 +630,13 @@ def test_run_codex_stream_falls_back_to_create_after_stream_completion_error(mon
 def test_run_codex_stream_fallback_parses_create_stream_events(monkeypatch):
     agent = _build_agent(monkeypatch)
     calls = {"stream": 0, "create": 0}
+    seen_events = []
     create_stream = _FakeCreateStream(
         [
             SimpleNamespace(type="response.created"),
             SimpleNamespace(type="response.in_progress"),
+            {"type": "response.output_text.delta", "delta": "streamed "},
+            {"type": "response.function_call_arguments.delta", "delta": "{}"},
             SimpleNamespace(type="response.completed", response=_codex_message_response("streamed create ok")),
         ]
     )
@@ -478,11 +659,23 @@ def test_run_codex_stream_fallback_parses_create_stream_events(monkeypatch):
         )
     )
 
-    response = agent._run_codex_stream(_codex_request_kwargs())
+    response = agent._run_codex_stream(
+        _codex_request_kwargs(),
+        on_stream_event=lambda event_type, *, progress=False: seen_events.append(
+            (event_type, progress)
+        ),
+    )
     assert calls["stream"] == 2
     assert calls["create"] == 1
     assert create_stream.closed is True
     assert response.output[0].content[0].text == "streamed create ok"
+    assert seen_events[-5:] == [
+        ("response.created", False),
+        ("response.in_progress", False),
+        ("response.output_text.delta", True),
+        ("response.function_call_arguments.delta", True),
+        ("response.completed", False),
+    ]
 
 
 def test_run_conversation_codex_plain_text(monkeypatch):
