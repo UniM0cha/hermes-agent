@@ -65,6 +65,7 @@ from gateway.platforms.base import (
     cache_document_from_bytes,
     SUPPORTED_DOCUMENT_TYPES,
 )
+from agent.i18n import t
 from tools.url_safety import is_safe_url
 
 
@@ -4194,11 +4195,11 @@ class DiscordAdapter(BasePlatformAdapter):
             max_desc = 4088
             cmd_display = command if len(command) <= max_desc else command[: max_desc - 3] + "..."
             embed = discord.Embed(
-                title="⚠️ Command Approval Required",
+                title=t("discord.command_approval_title"),
                 description=f"```\n{cmd_display}\n```",
                 color=discord.Color.orange(),
             )
-            embed.add_field(name="Reason", value=description, inline=False)
+            embed.add_field(name=t("discord.reason_field"), value=description, inline=False)
 
             view = ExecApprovalView(
                 session_key=session_key,
@@ -5160,6 +5161,16 @@ if DISCORD_AVAILABLE:
             self.allowed_user_ids = allowed_user_ids
             self.allowed_role_ids = allowed_role_ids or set()
             self.resolved = False
+            labels = {
+                "Allow Once": t("discord.allow_once"),
+                "Allow Session": t("discord.allow_session"),
+                "Always Allow": t("discord.always_allow"),
+                "Deny": t("discord.deny"),
+            }
+            for child in self.children:
+                label = getattr(child, "label", None)
+                if label in labels:
+                    setattr(child, "label", labels[label])
 
         def _check_auth(self, interaction: discord.Interaction) -> bool:
             """Verify the user clicking is authorized."""
@@ -5174,13 +5185,13 @@ if DISCORD_AVAILABLE:
             """Resolve the approval via the gateway approval queue and update the embed."""
             if self.resolved:
                 await interaction.response.send_message(
-                    "This approval has already been resolved~", ephemeral=True
+                    t("discord.approval_resolved"), ephemeral=True
                 )
                 return
 
             if not self._check_auth(interaction):
                 await interaction.response.send_message(
-                    "You're not authorized to approve commands~", ephemeral=True
+                    t("discord.not_authorized_approve"), ephemeral=True
                 )
                 return
 
@@ -5190,7 +5201,11 @@ if DISCORD_AVAILABLE:
             embed = interaction.message.embeds[0] if interaction.message.embeds else None
             if embed:
                 embed.color = color
-                embed.set_footer(text=f"{label} by {interaction.user.display_name}")
+                embed.set_footer(text=t(
+                    "discord.decision_by",
+                    decision=label,
+                    user=interaction.user.display_name,
+                ))
 
             # Disable all buttons
             for child in self.children:
@@ -5213,25 +5228,25 @@ if DISCORD_AVAILABLE:
         async def allow_once(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "once", discord.Color.green(), "Approved once")
+            await self._resolve(interaction, "once", discord.Color.green(), t("discord.approved_once"))  # pyright: ignore[reportOptionalMemberAccess]
 
         @discord.ui.button(label="Allow Session", style=discord.ButtonStyle.grey)
         async def allow_session(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "session", discord.Color.blue(), "Approved for session")
+            await self._resolve(interaction, "session", discord.Color.blue(), t("discord.approved_session"))  # pyright: ignore[reportOptionalMemberAccess]
 
         @discord.ui.button(label="Always Allow", style=discord.ButtonStyle.blurple)
         async def allow_always(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "always", discord.Color.purple(), "Approved permanently")
+            await self._resolve(interaction, "always", discord.Color.purple(), t("discord.approved_permanent"))  # pyright: ignore[reportOptionalMemberAccess]
 
         @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
         async def deny(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "deny", discord.Color.red(), "Denied")
+            await self._resolve(interaction, "deny", discord.Color.red(), t("discord.denied"))  # pyright: ignore[reportOptionalMemberAccess]
 
         async def on_timeout(self):
             """Handle view timeout -- disable buttons and mark as expired."""

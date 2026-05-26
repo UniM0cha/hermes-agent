@@ -30,6 +30,9 @@ approval:
       lookalike_tld:
         title: "Lookalike TLD detected"
         description: "Domain uses '{tld}' TLD which can be confused with file extensions"
+      pipe_to_interpreter:
+        title: "Pipe to interpreter: {source} | {interpreter}"
+        description: "Command pipes output from '{source}' directly to interpreter '{interpreter}'. Downloaded content will be executed without inspection."
 
 gateway:
   approval_expired: "⚠️ Genehmigung abgelaufen (Agent wartet nicht mehr). Bitten Sie
@@ -806,6 +809,21 @@ telegram:
   location_followup_instruction: "Ask what they'd like to find nearby (restaurants,
     cafes, etc.) and any preferences."
   image_document_unreadable: "Image document '{name}' could not be read as an image."
+
+discord:
+  command_approval_title: "⚠️ Command Approval Required"
+  reason_field: "Reason"
+  allow_once: "Allow Once"
+  allow_session: "Allow Session"
+  always_allow: "Always Allow"
+  deny: "Deny"
+  approved_once: "Approved once"
+  approved_session: "Approved for session"
+  approved_permanent: "Approved permanently"
+  denied: "Denied"
+  decision_by: "{decision} by {user}"
+  not_authorized_approve: "You're not authorized to approve commands."
+  approval_resolved: "This approval has already been resolved."
 
 # Slash command descriptions shown in gateway command menus.
 commands:

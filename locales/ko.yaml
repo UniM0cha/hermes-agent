@@ -28,6 +28,9 @@ approval:
       lookalike_tld:
         title: "유사 TLD 감지"
         description: "도메인이 파일 확장자와 혼동될 수 있는 '{tld}' TLD를 사용합니다"
+      pipe_to_interpreter:
+        title: "인터프리터로 파이프 전달: {source} | {interpreter}"
+        description: "명령이 '{source}'의 출력을 인터프리터 '{interpreter}'에 직접 전달합니다. 다운로드된 내용이 검사 없이 실행될 수 있습니다."
 
 gateway:
   approval_expired: "⚠️ 승인이 만료되었습니다 (에이전트가 더 이상 대기하지 않습니다). 에이전트에게 다시 시도하도록 요청하세요."
@@ -715,6 +718,21 @@ telegram:
   location_map: "지도: https://www.google.com/maps/search/?api=1&query={lat},{lon}"
   location_followup_instruction: "근처에서 무엇을 찾고 싶은지(식당, 카페 등)와 선호 조건을 물어보세요."
   image_document_unreadable: "이미지 문서 '{name}'을 이미지로 읽을 수 없습니다."
+
+discord:
+  command_approval_title: "⚠️ 명령 승인 필요"
+  reason_field: "사유"
+  allow_once: "한 번만 허용"
+  allow_session: "세션 동안 허용"
+  always_allow: "항상 허용"
+  deny: "거부"
+  approved_once: "한 번 승인됨"
+  approved_session: "세션 동안 승인됨"
+  approved_permanent: "영구 승인됨"
+  denied: "거부됨"
+  decision_by: "{user}님이 {decision}"
+  not_authorized_approve: "명령을 승인할 권한이 없습니다."
+  approval_resolved: "이 승인은 이미 처리되었습니다."
 
 # Slash command descriptions shown in gateway command menus.
 commands:

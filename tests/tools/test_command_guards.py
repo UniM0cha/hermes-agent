@@ -43,6 +43,23 @@ def _lookalike_tld_finding(tld=".dev"):
     }
 
 
+def _pipe_to_interpreter_finding(source="git", interpreter="python3"):
+    return {
+        "rule_id": "pipe_to_interpreter",
+        "severity": "HIGH",
+        "title": f"Pipe to interpreter: {source} | {interpreter}",
+        "description": (
+            f"Command pipes output from '{source}' directly to interpreter "
+            f"'{interpreter}'. Downloaded content will be executed without inspection."
+        ),
+        "evidence": [{
+            "type": "command_pattern",
+            "pattern": "pipe to interpreter",
+            "matched": f"{source} diff | {interpreter} - <<'PY'",
+        }],
+    }
+
+
 @pytest.fixture(autouse=True)
 def _clean_state():
     """Clear approval state and relevant env vars between tests."""
@@ -89,6 +106,18 @@ class TestTirithDescriptionLocalization:
         assert desc == (
             "보안 검사 — [중간 위험] 유사 TLD 감지: "
             "도메인이 파일 확장자와 혼동될 수 있는 '.dev' TLD를 사용합니다"
+        )
+
+    def test_pipe_to_interpreter_korean_localized(self):
+        os.environ["HERMES_LANGUAGE"] = "ko"
+        reset_language_cache()
+        desc = approval_module._format_tirith_description(
+            _tirith_result("block", [_pipe_to_interpreter_finding("git", "python3")])
+        )
+        assert desc == (
+            "보안 검사 — [높은 위험] 인터프리터로 파이프 전달: git | python3: "
+            "명령이 'git'의 출력을 인터프리터 'python3'에 직접 전달합니다. "
+            "다운로드된 내용이 검사 없이 실행될 수 있습니다."
         )
 
     def test_unknown_rule_preserves_raw_title_and_description(self):

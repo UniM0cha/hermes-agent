@@ -1015,6 +1015,14 @@ def check_dangerous_command(command: str, env_type: str,
 # =========================================================================
 
 _TIRITH_TLD_RE = re.compile(r"(?<![A-Za-z0-9-])\.[A-Za-z0-9-]{2,63}\b")
+_PIPE_TO_INTERPRETER_DESC_RE = re.compile(
+    r"output from ['\"](?P<source>[^'\"]+)['\"].*?interpreter ['\"](?P<interpreter>[^'\"]+)['\"]",
+    re.IGNORECASE,
+)
+_PIPE_TO_INTERPRETER_TITLE_RE = re.compile(
+    r"pipe to interpreter\s*:\s*(?P<source>[^|:]+?)\s*\|\s*(?P<interpreter>[^\s:;]+)",
+    re.IGNORECASE,
+)
 
 
 def _i18n_or_default(key: str, default: str, **format_kwargs) -> str:
@@ -1047,6 +1055,33 @@ def _extract_tirith_tld(finding: dict) -> str:
     return ""
 
 
+def _extract_pipe_to_interpreter_parts(finding: dict) -> tuple[str, str]:
+    """Extract source command and interpreter names from a Tirith finding."""
+    fields = [
+        finding.get("title"),
+        finding.get("description"),
+        finding.get("message"),
+        finding.get("detail"),
+    ]
+    evidence = finding.get("evidence")
+    if isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, dict):
+                fields.extend([item.get("raw"), item.get("matched"), item.get("value")])
+            else:
+                fields.append(item)
+
+    for value in fields:
+        text = str(value or "")
+        match = _PIPE_TO_INTERPRETER_DESC_RE.search(text)
+        if match:
+            return match.group("source").strip(), match.group("interpreter").strip()
+        match = _PIPE_TO_INTERPRETER_TITLE_RE.search(text)
+        if match:
+            return match.group("source").strip(), match.group("interpreter").strip()
+    return "", ""
+
+
 def _localize_tirith_finding(finding: dict) -> tuple[str, str, str]:
     """Return localized ``(severity, title, description)`` for a Tirith finding."""
     raw_severity = str(finding.get("severity", "") or "")
@@ -1063,17 +1098,28 @@ def _localize_tirith_finding(finding: dict) -> tuple[str, str, str]:
     title = raw_title
     desc = raw_desc
     if rule_id:
+        format_kwargs = {}
+        if rule_id == "lookalike_tld":
+            tld = _extract_tirith_tld(finding)
+            if tld:
+                format_kwargs["tld"] = tld
+        elif rule_id == "pipe_to_interpreter":
+            source, interpreter = _extract_pipe_to_interpreter_parts(finding)
+            if source and interpreter:
+                format_kwargs.update({"source": source, "interpreter": interpreter})
+
         title = _i18n_or_default(
             f"approval.security_scan.findings.{rule_id}.title",
             raw_title,
+            **format_kwargs,
         )
-        # Some Tirith descriptions include dynamic values (e.g. the TLD). Keep
-        # unknown rule descriptions raw instead of pretending we translated
-        # arbitrary scanner prose.
-        tld = _extract_tirith_tld(finding)
+        # Some Tirith descriptions include dynamic values (e.g. the TLD,
+        # source command, or interpreter). Keep unknown or unparseable scanner
+        # prose raw instead of pretending we translated arbitrary text.
         desc_key = f"approval.security_scan.findings.{rule_id}.description"
-        desc = _i18n_or_default(desc_key, raw_desc, tld=tld)
-        if rule_id == "lookalike_tld" and not tld:
+        desc = _i18n_or_default(desc_key, raw_desc, **format_kwargs)
+        if rule_id in {"lookalike_tld", "pipe_to_interpreter"} and not format_kwargs:
+            title = raw_title
             desc = raw_desc
 
     return severity, title, desc
