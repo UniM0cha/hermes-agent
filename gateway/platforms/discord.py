@@ -4708,6 +4708,11 @@ class DiscordAdapter(BasePlatformAdapter):
 
         # Determine message type
         msg_type = MessageType.TEXT
+        # Discord native voice messages arrive as audio attachments plus the
+        # MessageFlags.voice bit.  Plain uploaded audio files are also audio/*,
+        # so check the message-level flag before falling back to AUDIO.
+        voice_flag = getattr(getattr(message, "flags", None), "voice", False)
+        is_native_voice_message = voice_flag is True
         if normalized_content.startswith("/"):
             msg_type = MessageType.COMMAND
         elif all_attachments:
@@ -4720,7 +4725,11 @@ class DiscordAdapter(BasePlatformAdapter):
                     elif att.content_type.startswith("video/"):
                         msg_type = MessageType.VIDEO
                     elif att.content_type.startswith("audio/"):
-                        msg_type = MessageType.AUDIO
+                        msg_type = (
+                            MessageType.VOICE
+                            if is_native_voice_message
+                            else MessageType.AUDIO
+                        )
                     else:
                         doc_ext = ""
                         if att.filename:
