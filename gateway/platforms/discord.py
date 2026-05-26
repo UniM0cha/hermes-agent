@@ -5207,11 +5207,9 @@ if DISCORD_AVAILABLE:
                     user=interaction.user.display_name,
                 ))
 
-            # Disable all buttons
-            for child in self.children:
-                child.disabled = True
-
-            await interaction.response.edit_message(embed=embed, view=self)
+            # Remove the component row after a decision. Passing the resolved
+            # view back would leave disabled buttons visible in Discord.
+            await interaction.response.edit_message(embed=embed, view=None)
 
             # Unblock the waiting agent thread via the gateway approval queue
             try:
