@@ -268,13 +268,13 @@ def test_codex_interruptible_times_out_when_no_stream_events(monkeypatch):
         interruptible_api_call(agent, _codex_request_kwargs())
 
     message = str(exc_info.value)
-    assert "no provider events" in message
+    assert "no progress events" in message
     assert "300" not in message
     assert "stale_call_kill" in close_reasons
-    assert any("No provider events" in status for status in statuses)
+    assert any("No Codex progress events" in status for status in statuses)
 
 
-def test_codex_interruptible_keeps_metadata_only_events_on_initial_timeout(monkeypatch):
+def test_codex_interruptible_metadata_event_does_not_count_as_progress(monkeypatch):
     from agent.chat_completion_helpers import interruptible_api_call
 
     agent = _build_agent(monkeypatch)
@@ -309,10 +309,52 @@ def test_codex_interruptible_keeps_metadata_only_events_on_initial_timeout(monke
     assert elapsed >= initial_timeout
     assert elapsed < active_timeout
     message = str(exc_info.value)
-    assert "without progress after provider event response.in_progress" in message
+    assert "no progress events" in message
     assert "stale_call_kill" in close_reasons
-    assert any("response.in_progress" in status for status in statuses)
-    assert any("Codex stream event" in activity for activity in activities)
+    assert any("No Codex progress events" in status for status in statuses)
+    assert any("response.in_progress" in activity for activity in activities)
+
+
+
+def test_codex_interruptible_uses_active_timeout_after_progress_event(monkeypatch):
+    from agent.chat_completion_helpers import interruptible_api_call
+
+    agent = _build_agent(monkeypatch)
+    initial_timeout = 0.03
+    active_timeout = 0.16
+    monkeypatch.setenv("HERMES_CODEX_ACTIVE_STALE_TIMEOUT", str(active_timeout))
+    closed, close_reasons, statuses, activities = _install_codex_interruptible_test_hooks(
+        agent, monkeypatch, stale_timeout=initial_timeout
+    )
+    event_seen = threading.Event()
+
+    def _fake_codex_stream(
+        api_kwargs,
+        client=None,
+        on_first_delta=None,
+        on_stream_event=None,
+    ):
+        assert on_stream_event is not None
+        on_stream_event("response.reasoning_summary_text.delta", progress=True)
+        event_seen.set()
+        closed.wait(5.0)
+        raise RuntimeError("provider connection closed after stale timeout")
+
+    monkeypatch.setattr(agent, "_run_codex_stream", _fake_codex_stream)
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError) as exc_info:
+        interruptible_api_call(agent, _codex_request_kwargs())
+    elapsed = time.monotonic() - started
+
+    assert event_seen.is_set()
+    assert elapsed >= active_timeout
+    assert elapsed < 3.0
+    message = str(exc_info.value)
+    assert "after provider event response.reasoning_summary_text.delta" in message
+    assert "stale_call_kill" in close_reasons
+    assert any("response.reasoning_summary_text.delta" in status for status in statuses)
+    assert any("Codex stream active" in activity for activity in activities)
 
 
 def test_codex_interruptible_resets_active_timeout_on_repeated_events(monkeypatch):
@@ -320,7 +362,7 @@ def test_codex_interruptible_resets_active_timeout_on_repeated_events(monkeypatc
 
     agent = _build_agent(monkeypatch)
     initial_timeout = 0.03
-    active_timeout = 0.16
+    active_timeout = 0.8
     monkeypatch.setenv("HERMES_CODEX_ACTIVE_STALE_TIMEOUT", str(active_timeout))
     closed, _close_reasons, _statuses, _activities = _install_codex_interruptible_test_hooks(
         agent, monkeypatch, stale_timeout=initial_timeout
@@ -335,9 +377,9 @@ def test_codex_interruptible_resets_active_timeout_on_repeated_events(monkeypatc
     ):
         assert on_stream_event is not None
         for event_type in [
-            "response.in_progress",
             "response.reasoning_summary_text.delta",
             "response.output_text.delta",
+            "response.function_call_arguments.delta",
         ]:
             event_times.append(time.monotonic())
             on_stream_event(event_type, progress="delta" in event_type)

@@ -920,6 +920,13 @@ class AIAgent:
         if uses_implicit_default and base_url and is_local_endpoint(base_url):
             return float("inf")
 
+        # If the user explicitly configured a stale timeout, honor it exactly.
+        # The large-context scaling below is only a safety valve for the implicit
+        # default; otherwise a requested 30s Codex no-events cutoff silently
+        # stretches back to 450/600s on long conversations.
+        if not uses_implicit_default:
+            return stale_base
+
         from agent.chat_completion_helpers import estimate_request_context_tokens
         est_tokens = estimate_request_context_tokens(api_payload)
         if est_tokens > 100_000:

@@ -92,6 +92,71 @@ def _codex_active_stale_timeout(initial_timeout: float) -> float:
     return max(initial_timeout * 3, 900.0)
 
 
+def _rough_request_chars(value: Any) -> int:
+    """Return a coarse, content-agnostic character count for request sizing.
+
+    We need timeout diagnostics that work for both Chat Completions
+    (``messages``) and Responses API payloads (``input`` + ``instructions``)
+    without logging prompt text or secrets. This intentionally only returns a
+    rough size estimate.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, (int, float, bool)):
+        return len(str(value))
+    if isinstance(value, dict):
+        total = 0
+        for key, child in value.items():
+            key_s = str(key)
+            if key_s.lower() in {"api_key", "authorization", "cookie", "token", "access_token"}:
+                continue
+            total += len(key_s) + _rough_request_chars(child)
+        return total
+    if isinstance(value, (list, tuple, set)):
+        return sum(_rough_request_chars(child) for child in value)
+    try:
+        return len(str(value))
+    except Exception:
+        return 0
+
+
+def _estimate_api_kwargs_tokens(api_kwargs: dict) -> int:
+    """Coarse outbound request size estimate for diagnostics only."""
+    if not isinstance(api_kwargs, dict):
+        return 0
+    total_chars = 0
+    for key in ("messages", "input", "instructions"):
+        total_chars += _rough_request_chars(api_kwargs.get(key))
+    # Tool schemas affect prefill/serialization latency too; include them in
+    # the estimate so tool-heavy Hermes gateway calls do not misleadingly show
+    # context=~0.
+    total_chars += _rough_request_chars(api_kwargs.get("tools"))
+    return max(0, total_chars // 4)
+
+
+def _codex_request_diag_summary(api_kwargs: dict) -> dict:
+    """Return safe, non-content request-shape diagnostics for Codex calls."""
+    response_input = api_kwargs.get("input") if isinstance(api_kwargs, dict) else None
+    tools = api_kwargs.get("tools") if isinstance(api_kwargs, dict) else None
+    reasoning = api_kwargs.get("reasoning") if isinstance(api_kwargs, dict) else None
+    include = api_kwargs.get("include") if isinstance(api_kwargs, dict) else None
+    extra_headers = api_kwargs.get("extra_headers") if isinstance(api_kwargs, dict) else None
+    return {
+        "model": api_kwargs.get("model", "unknown"),
+        "estimated_tokens": _estimate_api_kwargs_tokens(api_kwargs),
+        "input_items": len(response_input) if isinstance(response_input, list) else None,
+        "tool_count": len(tools) if isinstance(tools, list) else 0,
+        "reasoning": reasoning if isinstance(reasoning, dict) else None,
+        "include": include if isinstance(include, list) else None,
+        "service_tier": api_kwargs.get("service_tier"),
+        "store": api_kwargs.get("store"),
+        "parallel_tool_calls": api_kwargs.get("parallel_tool_calls"),
+        "prompt_cache_key": bool(api_kwargs.get("prompt_cache_key")),
+        "extra_header_keys": sorted(str(k) for k in extra_headers.keys()) if isinstance(extra_headers, dict) else [],
+    }
+
 
 def estimate_request_context_tokens(api_payload: Any) -> int:
     """Estimate context/load tokens from an API payload, dict or messages list.
@@ -173,6 +238,7 @@ def interruptible_api_call(agent, api_kwargs: dict):
         "event_count": 0,
         "last_progress_at": None,
         "last_progress_type": None,
+        "progress_count": 0,
     }
     codex_state_lock = threading.Lock()
 
@@ -185,18 +251,56 @@ def interruptible_api_call(agent, api_kwargs: dict):
         event_label = event_type or "unknown"
         # The TTFB watchdog cares about any provider event/byte.
         agent._codex_stream_last_event_ts = now
+        progress_count = 0
+        event_count = 0
+        previous_progress_at = None
+        first_event_at = None
         with codex_state_lock:
             if _codex_stream_state["first_event_at"] is None:
                 _codex_stream_state["first_event_at"] = now
+            first_event_at = _codex_stream_state["first_event_at"]
             _codex_stream_state["last_event_at"] = now
             _codex_stream_state["last_event_type"] = event_label
             _codex_stream_state["event_count"] += 1
+            event_count = int(_codex_stream_state["event_count"] or 0)
             if progress:
+                previous_progress_at = _codex_stream_state["last_progress_at"]
                 _codex_stream_state["last_progress_at"] = now
                 _codex_stream_state["last_progress_type"] = event_label
+                _codex_stream_state["progress_count"] += 1
+                progress_count = int(_codex_stream_state["progress_count"] or 0)
+
+        elapsed_text = f"{now - float(first_event_at or now):.3f}s"
         if progress:
-            agent._touch_activity(f"Codex stream progress; last delta {event_label}")
+            gap_text = "first" if previous_progress_at is None else f"{now - float(previous_progress_at):.3f}s"
+            logger.info(
+                "Codex progress event: type=%s event_count=%d progress_count=%d "
+                "gap_since_previous=%s elapsed_since_first_event=%s model=%s",
+                event_label,
+                event_count,
+                progress_count,
+                gap_text,
+                elapsed_text,
+                api_kwargs.get("model", "unknown"),
+            )
+            agent._touch_activity(f"Codex stream active; last progress {event_label}")
         else:
+            if event_label in {
+                "response.queued",
+                "response.created",
+                "response.in_progress",
+                "response.completed",
+                "response.incomplete",
+                "response.failed",
+            } or event_count <= 3:
+                logger.info(
+                    "Codex stream lifecycle event: type=%s event_count=%d "
+                    "elapsed_since_first_event=%s model=%s",
+                    event_label,
+                    event_count,
+                    elapsed_text,
+                    api_kwargs.get("model", "unknown"),
+                )
             agent._touch_activity(f"Codex stream event; last event {event_label}")
 
     def _set_request_client(client):
@@ -429,29 +533,28 @@ def interruptible_api_call(agent, api_kwargs: dict):
             break
 
         # Stale-call detector: kill the connection if no response arrives
-        # within the configured timeout. Codex streams get three phases:
-        # no events, metadata-only/no progress, then active progress.
+        # within the configured timeout. Codex streams get two logical phases:
+        # no real progress yet (metadata-only/no events) and active progress.
         _now = time.time()
         _stale_mode = "non_streaming"
-        _last_event_type = None
         _last_progress_type = None
         if _is_codex_stream:
             _snapshot = _codex_stream_snapshot()
-            _last_event_at = _snapshot.get("last_event_at")
             _last_progress_at = _snapshot.get("last_progress_at")
-            if _last_event_at is None:
+            if _last_progress_at is None:
+                # Count only real progress as liveness for the short stale
+                # timeout. Metadata events like response.created prove the
+                # socket is alive, but not that the model is reasoning or
+                # producing output.
                 _elapsed = _now - _call_start
                 _effective_timeout = _stale_timeout
-                _stale_mode = "codex_no_provider_events"
-            elif _last_progress_at is None:
-                _elapsed = _now - _call_start
-                _effective_timeout = _stale_timeout
-                _last_event_type = str(_snapshot.get("last_event_type") or "unknown")
                 _stale_mode = "codex_no_progress_events"
             else:
                 _elapsed = _now - float(_last_progress_at)
                 _effective_timeout = _codex_active_timeout
-                _last_progress_type = str(_snapshot.get("last_progress_type") or "unknown")
+                _last_progress_type = str(
+                    _snapshot.get("last_progress_type") or _snapshot.get("last_event_type") or "unknown"
+                )
                 _stale_mode = "codex_inactive_after_progress"
         else:
             _elapsed = _now - _call_start
@@ -467,54 +570,48 @@ def interruptible_api_call(agent, api_kwargs: dict):
                 except Exception:
                     _silent_hint = None
 
-            if _stale_mode == "codex_no_provider_events":
+            _timeout_snapshot = _codex_stream_snapshot() if _is_codex_stream else {}
+            _event_count = int(_timeout_snapshot.get("event_count") or 0)
+            _last_event_seen = str(_timeout_snapshot.get("last_event_type") or "none")
+            _last_event_at = _timeout_snapshot.get("last_event_at")
+            _last_event_age = (_now - float(_last_event_at)) if _last_event_at else None
+
+            if _stale_mode == "codex_no_progress_events":
                 logger.warning(
                     "Codex Responses API call stale for %.0fs (threshold %.0fs): "
-                    "no provider events. model=%s context=~%s tokens. Killing connection.",
+                    "no progress events. model=%s context=~%s tokens events=%d "
+                    "last_event=%s last_event_age=%s. Killing connection.",
                     _elapsed, _effective_timeout,
                     api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
+                    _event_count, _last_event_seen,
+                    f"{_last_event_age:.3f}s" if _last_event_age is not None else "none",
                 )
                 _timeout_message = (
                     f"Codex Responses API call timed out after {int(_elapsed)}s "
-                    f"with no provider events (threshold: {int(_effective_timeout)}s)"
+                    f"with no progress events (threshold: {int(_effective_timeout)}s)"
                 )
                 _status = (
-                    f"⚠️ No provider events for {int(_elapsed)}s "
+                    f"⚠️ No Codex progress events for {int(_elapsed)}s "
                     f"(Codex stream, model: {api_kwargs.get('model', 'unknown')}). "
-                )
-            elif _stale_mode == "codex_no_progress_events":
-                logger.warning(
-                    "Codex Responses stream stale for %.0fs with metadata-only events "
-                    "(last event %s, threshold %.0fs). model=%s context=~%s tokens. "
-                    "Killing connection.",
-                    _elapsed, _last_event_type, _effective_timeout,
-                    api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
-                )
-                _timeout_message = (
-                    f"Codex Responses stream timed out after {int(_elapsed)}s "
-                    f"without progress after provider event {_last_event_type} "
-                    f"(threshold: {int(_effective_timeout)}s)"
-                )
-                _status = (
-                    f"⚠️ Codex stream produced no progress for {int(_elapsed)}s "
-                    f"after last event {_last_event_type} "
-                    f"(model: {api_kwargs.get('model', 'unknown')}). "
                 )
             elif _stale_mode == "codex_inactive_after_progress":
                 logger.warning(
                     "Codex Responses stream inactive for %.0fs after progress event %s "
-                    "(threshold %.0fs). model=%s context=~%s tokens. Killing connection.",
+                    "(threshold %.0fs). model=%s context=~%s tokens events=%d "
+                    "last_event=%s last_event_age=%s. Killing connection.",
                     _elapsed, _last_progress_type, _effective_timeout,
                     api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
+                    _event_count, _last_event_seen,
+                    f"{_last_event_age:.3f}s" if _last_event_age is not None else "none",
                 )
                 _timeout_message = (
                     f"Codex Responses stream timed out after {int(_elapsed)}s "
-                    f"after progress event {_last_progress_type} "
+                    f"after provider event {_last_progress_type} "
                     f"(threshold: {int(_effective_timeout)}s)"
                 )
                 _status = (
                     f"⚠️ Codex stream inactive for {int(_elapsed)}s "
-                    f"after last progress {_last_progress_type} "
+                    f"after last event {_last_progress_type} "
                     f"(model: {api_kwargs.get('model', 'unknown')}). "
                 )
             else:

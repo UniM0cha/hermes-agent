@@ -200,6 +200,27 @@ async def test_dms_unaffected_by_ignored_channels(adapter, monkeypatch):
     adapter.handle_message.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_free_response_channel_still_auto_threads(adapter, monkeypatch):
+    """Free-response channels skip the mention requirement but still create threads."""
+    monkeypatch.setenv("DISCORD_REQUIRE_MENTION", "true")
+    monkeypatch.setenv("DISCORD_FREE_RESPONSE_CHANNELS", "700")
+    monkeypatch.delenv("DISCORD_AUTO_THREAD", raising=False)
+    monkeypatch.delenv("DISCORD_IGNORED_CHANNELS", raising=False)
+    monkeypatch.delenv("DISCORD_NO_THREAD_CHANNELS", raising=False)
+
+    fake_thread = FakeThread(channel_id=999, name="auto-thread")
+    adapter._auto_create_thread = AsyncMock(return_value=fake_thread)
+
+    message = make_message(channel=FakeTextChannel(channel_id=700), content="hello without mention")
+    await adapter._handle_message(message)
+
+    adapter._auto_create_thread.assert_awaited_once_with(message)
+    adapter.handle_message.assert_awaited_once()
+    event = adapter.handle_message.await_args.args[0]
+    assert event.source.chat_type == "thread"
+
+
 # ── no_thread_channels ───────────────────────────────────────────────
 
 
