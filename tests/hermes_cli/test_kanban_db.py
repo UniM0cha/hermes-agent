@@ -48,6 +48,108 @@ def test_init_creates_expected_tables(kanban_home):
     assert {"tasks", "task_links", "task_comments", "task_events"} <= names
 
 
+def test_connect_rejects_tls_record_in_sqlite_header(tmp_path, monkeypatch):
+    """Kanban should classify TLS-looking page-0 clobbers before WAL setup."""
+    home = tmp_path / ".hermes"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.delenv("HERMES_KANBAN_DB", raising=False)
+    monkeypatch.delenv("HERMES_KANBAN_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    corrupt = home / "kanban.db"
+    corrupt.write_bytes(b"SQLit" + bytes.fromhex("17 03 03 00 13") + b"x" * 32)
+
+    with pytest.raises(sqlite3.DatabaseError) as exc_info:
+        kb.connect(board="default")
+
+    msg = str(exc_info.value)
+    assert "file is not a database" in msg
+    assert "TLS record header detected at byte offset 5" in msg
+    assert "53 51 4c 69 74 17 03 03 00 13" in msg
+
+
+def test_connect_migrates_legacy_db_before_optional_column_indexes(tmp_path):
+    """Legacy DBs missing additive indexed columns must migrate cleanly.
+
+    SCHEMA_SQL runs in ``connect()`` before ``_migrate_add_optional_columns``.
+    Indexes over additive columns therefore must be created after the
+    migration adds those columns, or boards predating the column fail to
+    open before migration can run.
+
+    Covers all four indexes that sit on additive columns:
+    - ``tasks.session_id``       -> ``idx_tasks_session_id``    (#28447)
+    - ``tasks.tenant``           -> ``idx_tasks_tenant``        (#16081)
+    - ``tasks.idempotency_key``  -> ``idx_tasks_idempotency``   (#17805)
+    - ``task_events.run_id``     -> ``idx_events_run``          (#17805)
+    """
+    db_path = tmp_path / "legacy-kanban.db"
+    conn = sqlite3.connect(str(db_path))
+    # Pre-#16081 ``tasks`` shape: missing tenant, idempotency_key, session_id.
+    conn.execute("""
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT,
+            assignee TEXT,
+            status TEXT NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT,
+            created_at INTEGER NOT NULL,
+            started_at INTEGER,
+            completed_at INTEGER,
+            workspace_kind TEXT NOT NULL DEFAULT 'scratch',
+            workspace_path TEXT,
+            claim_lock TEXT,
+            claim_expires INTEGER
+        )
+    """)
+    # Pre-#17805 ``task_events`` shape: missing run_id. Required because
+    # ``_migrate_add_optional_columns`` unconditionally runs PRAGMA on
+    # ``task_events`` for run_id back-fill.
+    conn.execute("""
+        CREATE TABLE task_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            payload TEXT,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO tasks (id, title, status, created_at) "
+        "VALUES ('legacy', 'old board task', 'ready', 1)"
+    )
+    conn.commit()
+    conn.close()
+
+    with kb.connect(db_path) as migrated:
+        task_columns = {
+            row["name"] for row in migrated.execute("PRAGMA table_info(tasks)")
+        }
+        event_columns = {
+            row["name"]
+            for row in migrated.execute("PRAGMA table_info(task_events)")
+        }
+        indexes = {
+            row["name"]
+            for row in migrated.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+
+    # Additive columns added by migration:
+    assert "session_id" in task_columns
+    assert "tenant" in task_columns
+    assert "idempotency_key" in task_columns
+    assert "run_id" in event_columns
+    # And their indexes — the regression scope of this test:
+    assert "idx_tasks_session_id" in indexes
+    assert "idx_tasks_tenant" in indexes
+    assert "idx_tasks_idempotency" in indexes
+    assert "idx_events_run" in indexes
+
+
 # ---------------------------------------------------------------------------
 # Task creation + status inference
 # ---------------------------------------------------------------------------
@@ -462,7 +564,7 @@ def test_detect_crashed_workers_isolated_failure_normal_retry(
             )
 
 
-def test_max_runtime_uses_current_run_start_after_retry(kanban_home):
+def test_max_runtime_uses_current_run_start_after_retry(kanban_home, monkeypatch):
     """A retry should get a fresh max-runtime window.
 
     ``tasks.started_at`` intentionally records the first time the task ever
@@ -470,6 +572,8 @@ def test_max_runtime_uses_current_run_start_after_retry(kanban_home):
     ``task_runs.started_at`` row; otherwise every retry of an old task is
     immediately timed out again.
     """
+    monkeypatch.setattr(kb, "_pid_alive", lambda _pid: False)
+
     with kb.connect() as conn:
         host = kb._claimer_id().split(":", 1)[0]
         t = kb.create_task(
@@ -1174,10 +1278,20 @@ def test_respawn_guard_old_pr_comment_not_guarded(kanban_home):
     assert reason is None
 
 
-def test_dispatch_respawn_guard_auto_blocks_auth_error(
+def test_dispatch_respawn_guard_defers_auth_error_without_auto_block(
     kanban_home, all_assignees_spawnable
 ):
-    """dispatch_once auto-blocks a ready task whose last error is a blocker_auth."""
+    """dispatch_once defers (does NOT auto-block) a ready task whose last
+    error is a blocker_auth.
+
+    The old behaviour auto-blocked on first occurrence, which was too
+    aggressive: a transient 429 rate-limit (which typically clears in
+    seconds to minutes) would end up requiring manual unblock. The new
+    behaviour defers the spawn this tick; the task stays in ``ready``
+    and gets another chance next tick. If the auth error genuinely
+    persists, the existing ``consecutive_failures`` circuit breaker
+    will auto-block via the normal failure-limit path.
+    """
     spawned_ids = []
 
     def fake_spawn(task, workspace):
@@ -1191,10 +1305,22 @@ def test_dispatch_respawn_guard_auto_blocks_auth_error(
         )
         res = kb.dispatch_once(conn, spawn_fn=fake_spawn)
 
-    assert t in res.auto_blocked
+    # Critical: task is NOT auto-blocked on first occurrence.
+    assert t not in res.auto_blocked, (
+        f"blocker_auth should defer, not auto-block on first occurrence; "
+        f"got auto_blocked={res.auto_blocked!r}"
+    )
+    # It IS recorded as respawn_guarded with the reason.
+    assert (t, "blocker_auth") in res.respawn_guarded, (
+        f"expected (task_id, 'blocker_auth') in respawn_guarded; "
+        f"got {res.respawn_guarded!r}"
+    )
+    # And it's NOT spawned this tick.
     assert t not in spawned_ids
+    # Status stays ``ready`` so a future tick (or operator action) can
+    # retry without manual unblock.
     with kb.connect() as conn:
-        assert kb.get_task(conn, t).status == "blocked"
+        assert kb.get_task(conn, t).status == "ready"
 
 
 def test_dispatch_respawn_guard_skips_recent_success(
@@ -1342,6 +1468,138 @@ def test_worktree_workspace_returns_intended_path(kanban_home, tmp_path):
         ws = kb.resolve_workspace(task)
     # We do NOT auto-create worktrees; the worker's skill handles that.
     assert str(ws) == target
+
+
+# ---------------------------------------------------------------------------
+# Scratch cleanup containment (#28818)
+# ---------------------------------------------------------------------------
+
+def test_cleanup_workspace_removes_managed_scratch_dir(kanban_home):
+    """A scratch workspace under the kanban workspaces root is removed."""
+    with kb.connect() as conn:
+        t = kb.create_task(conn, title="scratchy")
+        task = kb.get_task(conn, t)
+        ws = kb.resolve_workspace(task)
+        kb.set_workspace_path(conn, t, ws)
+        assert ws.is_dir()
+        kb.complete_task(conn, t, result="ok")
+    assert not ws.exists(), "Hermes-managed scratch dir should be cleaned up"
+
+
+def test_cleanup_workspace_refuses_path_outside_scratch_root(kanban_home, tmp_path):
+    """A scratch task with a user path outside the workspaces root must NOT be deleted (#28818).
+
+    Reproduces the data-loss vector where a board's ``default_workdir`` is set
+    to a real source directory; tasks created without an explicit
+    ``workspace_kind`` inherit ``scratch`` semantics, and the old cleanup path
+    would ``shutil.rmtree`` the user's source tree on task completion.
+    """
+    real_source = tmp_path / "real-source"
+    real_source.mkdir()
+    (real_source / ".git").mkdir()
+    (real_source / "README.md").write_text("important", encoding="utf-8")
+
+    with kb.connect() as conn:
+        t = kb.create_task(conn, title="ship")
+        # Simulate the bad state directly: workspace_kind='scratch' (default)
+        # but workspace_path pointing at the user's real source tree, which is
+        # exactly what board.default_workdir produces when the task is created
+        # without an explicit workspace_kind.
+        conn.execute(
+            "UPDATE tasks SET workspace_kind=?, workspace_path=? WHERE id=?",
+            ("scratch", str(real_source), t),
+        )
+        conn.commit()
+        kb.complete_task(conn, t, result="ok")
+
+    assert real_source.exists(), "User source tree must not be deleted by scratch cleanup"
+    assert (real_source / ".git").exists()
+    assert (real_source / "README.md").read_text(encoding="utf-8") == "important"
+
+
+def test_cleanup_workspace_honors_workspaces_root_env_override(tmp_path, monkeypatch):
+    """``HERMES_KANBAN_WORKSPACES_ROOT`` extends the managed-scratch set.
+
+    Worker subprocesses run with this env var injected by the dispatcher. The
+    cleanup containment check must treat paths under it as managed even when
+    they sit outside the active kanban home.
+    """
+    home = tmp_path / ".hermes"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    workspaces_override = tmp_path / "ext-workspaces"
+    workspaces_override.mkdir()
+    monkeypatch.setenv("HERMES_KANBAN_WORKSPACES_ROOT", str(workspaces_override))
+    kb.init_db()
+
+    with kb.connect() as conn:
+        t = kb.create_task(conn, title="ext")
+        scratch_dir = workspaces_override / t
+        scratch_dir.mkdir()
+        conn.execute(
+            "UPDATE tasks SET workspace_kind=?, workspace_path=? WHERE id=?",
+            ("scratch", str(scratch_dir), t),
+        )
+        conn.commit()
+        kb.complete_task(conn, t, result="ok")
+
+    assert not scratch_dir.exists(), "Override-root scratch dir should be cleaned up"
+
+
+def test_is_managed_scratch_path_accepts_per_board_workspaces(kanban_home, tmp_path):
+    """Per-board scratch dirs under ``<kanban_home>/kanban/boards/<slug>/workspaces`` are managed."""
+    board_scratch = kanban_home / "kanban" / "boards" / "my-board" / "workspaces" / "task-1"
+    board_scratch.mkdir(parents=True)
+    assert kb._is_managed_scratch_path(board_scratch)
+
+
+def test_is_managed_scratch_path_rejects_real_source_tree(kanban_home, tmp_path):
+    """A path outside any managed root (e.g. a user's repo) is NOT managed."""
+    real = tmp_path / "code" / "my-project"
+    real.mkdir(parents=True)
+    assert not kb._is_managed_scratch_path(real)
+
+
+def test_is_managed_scratch_path_rejects_kanban_metadata_subtrees(kanban_home):
+    """Hermes' own DB/metadata/log subtrees under ``<kanban_home>/kanban`` are NOT managed.
+
+    Regression guard for the Copilot finding on #28819: a scratch task whose
+    ``workspace_path`` was mis-set to the kanban home, the logs dir, or a
+    board's metadata dir (i.e. the board root itself, not its ``workspaces/``
+    child) must be refused. Without this, the containment check would happily
+    ``shutil.rmtree`` Hermes' DB/metadata/logs on task completion.
+    """
+    kanban_root = kanban_home / "kanban"
+    kanban_root.mkdir(parents=True, exist_ok=True)
+    assert not kb._is_managed_scratch_path(kanban_root)
+
+    logs_dir = kanban_root / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    assert not kb._is_managed_scratch_path(logs_dir)
+
+    board_root = kanban_root / "boards" / "my-board"
+    board_root.mkdir(parents=True, exist_ok=True)
+    # The board root itself is NOT a managed scratch dir — only the
+    # ``workspaces/`` child (and its descendants) are.
+    assert not kb._is_managed_scratch_path(board_root)
+
+    # Sibling subtrees of ``workspaces/`` under a board (e.g. its kanban.db
+    # or board.json living next to ``workspaces/``) are also not managed.
+    board_logs = board_root / "logs"
+    board_logs.mkdir(parents=True, exist_ok=True)
+    assert not kb._is_managed_scratch_path(board_logs)
+
+    # Now create the board's workspaces dir and a task scratch dir under it —
+    # the latter is the only thing the guard should allow.
+    board_workspaces = board_root / "workspaces"
+    board_workspaces.mkdir(parents=True, exist_ok=True)
+    # The workspaces root itself is also NOT managed — deleting it would
+    # wipe every task's scratch dir at once.
+    assert not kb._is_managed_scratch_path(board_workspaces)
+    task_dir = board_workspaces / "task-42"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    assert kb._is_managed_scratch_path(task_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -2237,24 +2495,25 @@ def _make_task(**overrides) -> "kb.Task":
 
 def test_safe_int_accepts_int_and_int_string():
     """Sanity: well-typed values pass through."""
-    assert kb._safe_int(0) == 0
-    assert kb._safe_int(1700000000) == 1700000000
-    assert kb._safe_int("1700000000") == 1700000000
+    # PR d8ad431de renamed _safe_int → _to_epoch (now also handles ISO-8601).
+    assert kb._to_epoch(0) == 0
+    assert kb._to_epoch(1700000000) == 1700000000
+    assert kb._to_epoch("1700000000") == 1700000000
 
 
 def test_safe_int_returns_none_on_corrupt_inputs():
     """All the failure modes that used to crash task_age."""
     # None — common when the column was never written
-    assert kb._safe_int(None) is None
+    assert kb._to_epoch(None) is None
     # Unsubstituted format string — the literal case the PR title cites
-    assert kb._safe_int("%s") is None
+    assert kb._to_epoch("%s") is None
     # Arbitrary non-numeric strings
-    assert kb._safe_int("abc") is None
-    assert kb._safe_int("") is None
+    assert kb._to_epoch("abc") is None
+    assert kb._to_epoch("") is None
     # Float-ish strings: int("1.5") raises ValueError too — caller wants None.
-    assert kb._safe_int("1.5") is None
+    assert kb._to_epoch("1.5") is None
     # Random object — covered by TypeError branch
-    assert kb._safe_int(object()) is None
+    assert kb._to_epoch(object()) is None
 
 
 def test_task_age_handles_corrupt_created_at():
@@ -2337,13 +2596,32 @@ def test_task_dict_survives_corrupt_created_at(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_create_task_without_workspace_inherits_board_default_workdir(kanban_home, monkeypatch):
-    """Board with default_workdir → create_task without workspace_path → inherits default."""
+def test_create_task_scratch_without_workspace_ignores_board_default_workdir(kanban_home, monkeypatch):
+    """Scratch tasks must NOT inherit board.default_workdir — would point auto-cleanup
+    at the user's source tree on completion (#28818)."""
     default_wd = "/home/user/project"
     kb.create_board("work-proj", default_workdir=default_wd)
 
     with kb.connect(board="work-proj") as conn:
-        tid = kb.create_task(conn, title="inherited", board="work-proj")
+        tid = kb.create_task(conn, title="scratch-task", board="work-proj")
+        t = kb.get_task(conn, tid)
+    assert t is not None
+    assert t.workspace_kind == "scratch"
+    assert t.workspace_path is None
+
+
+def test_create_task_dir_without_workspace_inherits_board_default_workdir(kanban_home, monkeypatch):
+    """Board default_workdir is for persistent dir/worktree workspaces, not scratch."""
+    default_wd = "/home/user/project"
+    kb.create_board("work-proj-dir", default_workdir=default_wd)
+
+    with kb.connect(board="work-proj-dir") as conn:
+        tid = kb.create_task(
+            conn,
+            title="inherited",
+            workspace_kind="dir",
+            board="work-proj-dir",
+        )
         t = kb.get_task(conn, tid)
     assert t is not None
     assert t.workspace_path == default_wd
@@ -2792,3 +3070,272 @@ def test_detect_stale_skips_blocked_tasks(kanban_home, monkeypatch):
         )
         assert stale == [], "Blocked task should not be reclaimed by stale detection"
         assert kb.get_task(conn, t).status == "blocked"
+
+
+def test_detect_stale_does_not_tick_failure_counter(kanban_home, monkeypatch):
+    """Stale reclaim must NOT tick consecutive_failures.
+
+    Stale detection is dispatcher-side absence-of-heartbeat detection,
+    not a worker failure. Counting it as a failure would let two
+    legitimately-long-running tasks (>4h without explicit heartbeat) trip
+    the circuit breaker and auto-block at the default failure_limit=2,
+    even though no worker actually failed. The 'stale' event in
+    task_events is the right audit surface; the consecutive_failures
+    counter is reserved for spawn_failed / timed_out / crashed.
+    """
+    import hermes_cli.kanban_db as _kb
+
+    with kb.connect() as conn:
+        t = kb.create_task(conn, title="stale-no-counter-tick", assignee="worker")
+        kb.claim_task(conn, t)
+        kb._set_worker_pid(conn, t, os.getpid())
+
+        five_hours_ago = int(time.time()) - (5 * 3600)
+        with kb.write_txn(conn):
+            conn.execute(
+                "UPDATE tasks SET started_at = ? WHERE id = ?", (five_hours_ago, t)
+            )
+            conn.execute(
+                "UPDATE task_runs SET started_at = ? "
+                "WHERE id = (SELECT current_run_id FROM tasks WHERE id = ?)",
+                (five_hours_ago, t),
+            )
+            # Counter starts at 0; assert that's our baseline.
+            row = conn.execute(
+                "SELECT consecutive_failures FROM tasks WHERE id = ?", (t,)
+            ).fetchone()
+            assert row["consecutive_failures"] in (0, None)
+
+        monkeypatch.setattr(_kb, "_pid_alive", lambda _pid: False)
+        stale = kb.detect_stale_running(
+            conn, stale_timeout_seconds=14400, signal_fn=lambda p, s: None,
+        )
+        assert t in stale, "Task should be reclaimed by stale detection"
+
+        # Critical assertion: the failure counter MUST NOT have ticked.
+        # Stale reclaim resets to ready for re-dispatch without penalty.
+        row = conn.execute(
+            "SELECT consecutive_failures FROM tasks WHERE id = ?", (t,)
+        ).fetchone()
+        assert row["consecutive_failures"] in (0, None), (
+            f"Stale reclaim ticked consecutive_failures to "
+            f"{row['consecutive_failures']!r}; should remain 0/NULL."
+        )
+
+        # And the audit trail still records the stale event so operators
+        # can see what happened.
+        events = conn.execute(
+            "SELECT kind FROM task_events WHERE task_id = ? ORDER BY id",
+            (t,),
+        ).fetchall()
+        kinds = [e["kind"] for e in events]
+        assert "stale" in kinds, (
+            f"Expected 'stale' event in task_events; got {kinds!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Corruption guard (issue #30687)
+# ---------------------------------------------------------------------------
+
+def _write_corrupt_db(path: Path) -> bytes:
+    """Write a kanban DB with a VALID SQLite header but malformed page content.
+
+    This is the corruption shape the integrity guard specifically targets
+    (e.g. issue #29507 follow-up reports where the file's first 16 bytes
+    pass the header byte check but ``PRAGMA integrity_check`` then fails
+    because the internal pages are damaged). It's what main's header-only
+    validator was letting through, and what this PR adds the full guard
+    for.
+    """
+    # 100-byte SQLite header (magic + minimal valid-looking fields) so the
+    # cheap header check passes, then deliberate garbage so sqlite refuses
+    # to read the file past the header.
+    header = b"SQLite format 3\x00" + b"\x10\x00\x02\x02\x00\x40\x20\x20"
+    header += b"\x00\x00\x00\x0c\x00\x00\x23\x46\x00\x00\x00\x00"
+    header = header.ljust(100, b"\x00")
+    payload = b"definitely not a valid sqlite page \x00\x01\x02\x03" * 64
+    blob = header + payload
+    path.write_bytes(blob)
+    return blob
+
+
+def test_init_db_refuses_corrupt_existing_file(tmp_path):
+    db_path = tmp_path / "kanban.db"
+    original = _write_corrupt_db(db_path)
+    # Ensure the cache doesn't mask the guard.
+    kb._INITIALIZED_PATHS.discard(str(db_path.resolve()))
+
+    with pytest.raises(kb.KanbanDbCorruptError) as excinfo:
+        kb.init_db(db_path=db_path)
+
+    err = excinfo.value
+    assert err.db_path == db_path
+    assert err.backup_path is not None
+    assert err.backup_path.exists()
+    assert err.backup_path.read_bytes() == original
+    # Original bytes untouched — no schema was written on top.
+    assert db_path.read_bytes() == original
+    assert str(db_path) in str(err)
+    assert str(err.backup_path) in str(err)
+
+
+def test_connect_refuses_corrupt_existing_file(tmp_path):
+    db_path = tmp_path / "kanban.db"
+    _write_corrupt_db(db_path)
+    kb._INITIALIZED_PATHS.discard(str(db_path.resolve()))
+
+    with pytest.raises(kb.KanbanDbCorruptError):
+        kb.connect(db_path=db_path)
+
+
+def test_locked_healthy_db_does_not_classify_as_corrupt(tmp_path, monkeypatch):
+    """A transient lock during the probe must not produce a .corrupt backup
+    and must not be reported as :class:`KanbanDbCorruptError`. Raw sqlite
+    ``OperationalError`` (lock/busy) is acceptable and expected."""
+    db_path = tmp_path / "kanban.db"
+    kb.init_db(db_path=db_path)
+    kb._INITIALIZED_PATHS.discard(str(db_path.resolve()))
+
+    real_connect = sqlite3.connect
+
+    def flaky_connect(*args, **kwargs):
+        # First call is the integrity probe — simulate a lock.
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(kb.sqlite3, "connect", flaky_connect)
+
+    with pytest.raises(sqlite3.OperationalError):
+        kb.connect(db_path=db_path)
+
+    # No .corrupt backup may be produced for a healthy-but-locked DB.
+    backups = list(tmp_path.glob("*.corrupt.*"))
+    assert backups == [], f"unexpected corrupt backups: {backups}"
+
+    # And once the lock clears, normal access still works.
+    monkeypatch.setattr(kb.sqlite3, "connect", real_connect)
+    with kb.connect(db_path=db_path) as conn:
+        kb.create_task(conn, title="still here")
+        titles = [t.title for t in kb.list_tasks(conn)]
+    assert "still here" in titles
+
+
+def test_init_db_allows_missing_then_healthy(tmp_path):
+    db_path = tmp_path / "fresh.db"
+    assert not db_path.exists()
+    kb.init_db(db_path=db_path)
+    assert db_path.exists() and db_path.stat().st_size > 0
+
+    # Idempotent on a healthy DB: data survives a second init.
+    with kb.connect(db_path=db_path) as conn:
+        kb.create_task(conn, title="keeps")
+    kb.init_db(db_path=db_path)
+    with kb.connect(db_path=db_path) as conn:
+        tasks = kb.list_tasks(conn)
+    assert [t.title for t in tasks] == ["keeps"]
+
+
+# ---------------------------------------------------------------------------
+# First-use tip for scratch workspaces
+# ---------------------------------------------------------------------------
+
+def test_maybe_emit_scratch_tip_fires_once_per_install(kanban_home, caplog):
+    """First scratch workspace materialization warns + emits an event.
+
+    Subsequent scratch workspaces on the SAME install stay silent — the
+    sentinel file under kanban_home() flips after the first emit.
+    """
+    import logging
+
+    with kb.connect() as conn:
+        t1 = kb.create_task(conn, title="first scratch")
+        t2 = kb.create_task(conn, title="second scratch")
+
+    # Sentinel must not exist yet on a fresh install.
+    assert not kb._scratch_tip_shown()
+
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.kanban_db"):
+        with kb.connect() as conn:
+            kb._maybe_emit_scratch_tip(conn, t1, "scratch")
+
+    # Sentinel is now set.
+    assert kb._scratch_tip_shown()
+    assert kb._scratch_tip_sentinel_path().exists()
+
+    # Warning was logged exactly once.
+    tip_records = [
+        r for r in caplog.records
+        if "scratch workspaces are ephemeral" in r.getMessage()
+    ]
+    assert len(tip_records) == 1, (
+        f"Expected exactly one tip warning, got {len(tip_records)}: "
+        f"{[r.getMessage() for r in tip_records]!r}"
+    )
+
+    # An event row was appended on the first task.
+    with kb.connect() as conn:
+        events = conn.execute(
+            "SELECT kind FROM task_events WHERE task_id = ? ORDER BY id",
+            (t1,),
+        ).fetchall()
+    kinds = [e["kind"] for e in events]
+    assert "tip_scratch_workspace" in kinds, (
+        f"Expected tip_scratch_workspace event on first scratch task; "
+        f"got {kinds!r}"
+    )
+
+    # Second scratch materialization on the same install stays silent.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.kanban_db"):
+        with kb.connect() as conn:
+            kb._maybe_emit_scratch_tip(conn, t2, "scratch")
+    tip_records2 = [
+        r for r in caplog.records
+        if "scratch workspaces are ephemeral" in r.getMessage()
+    ]
+    assert tip_records2 == [], (
+        f"Tip should not re-fire after sentinel is set; got "
+        f"{[r.getMessage() for r in tip_records2]!r}"
+    )
+    with kb.connect() as conn:
+        events2 = conn.execute(
+            "SELECT kind FROM task_events WHERE task_id = ? ORDER BY id",
+            (t2,),
+        ).fetchall()
+    assert "tip_scratch_workspace" not in [e["kind"] for e in events2], (
+        "Tip event should not be appended for subsequent scratch tasks."
+    )
+
+
+def test_maybe_emit_scratch_tip_skips_non_scratch_workspaces(kanban_home, caplog):
+    """worktree/dir workspaces are preserved on completion and must not
+    trigger the scratch-cleanup tip."""
+    import logging
+
+    with kb.connect() as conn:
+        t_wt = kb.create_task(conn, title="worktree task")
+        t_dir = kb.create_task(conn, title="dir task")
+
+    assert not kb._scratch_tip_shown()
+
+    with caplog.at_level(logging.WARNING, logger="hermes_cli.kanban_db"):
+        with kb.connect() as conn:
+            kb._maybe_emit_scratch_tip(conn, t_wt, "worktree")
+            kb._maybe_emit_scratch_tip(conn, t_dir, "dir")
+
+    # Sentinel stays unset — these workspaces are preserved by design,
+    # so the warning is irrelevant for them and we save the one-shot
+    # for a real scratch user.
+    assert not kb._scratch_tip_shown()
+    tip_records = [
+        r for r in caplog.records
+        if "scratch workspaces are ephemeral" in r.getMessage()
+    ]
+    assert tip_records == []
+    with kb.connect() as conn:
+        for tid in (t_wt, t_dir):
+            events = conn.execute(
+                "SELECT kind FROM task_events WHERE task_id = ?", (tid,),
+            ).fetchall()
+            assert "tip_scratch_workspace" not in [e["kind"] for e in events]
+

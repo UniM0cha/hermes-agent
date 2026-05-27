@@ -254,20 +254,22 @@ gateway:
     restarting: "♻ 正在重新啟動閘道。如果 60 秒內未收到通知，請在主控台執行 `hermes gateway restart` 重新啟動。"
 
   resume:
-    db_unavailable: "工作階段資料庫無法使用。"
-    no_named_sessions: "找不到已命名的工作階段。\n使用 `/title 我的工作階段` 為目前工作階段命名，然後使用 `/resume 我的工作階段`
-      返回。"
-    list_header: "📋 **已命名工作階段**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\n用法：`/resume <工作階段名稱>`"
-    list_failed: "無法列出工作階段：{error}"
-    not_found: "找不到符合 '**{name}**' 的工作階段。\n使用不帶參數的 `/resume` 檢視可用的工作階段。"
-    already_on: "📌 已在工作階段 **{name}** 上。"
-    switch_failed: "切換工作階段失敗。"
-    resumed_one: "↻ 已恢復工作階段 **{title}**（{count} 則訊息）。對話已還原。"
-    resumed_many: "↻ 已恢復工作階段 **{title}**（{count} 則訊息）。對話已還原。"
-    resumed_no_count: "↻ 已恢復工作階段 **{title}**。對話已還原。"
+    db_unavailable:        "工作階段資料庫無法使用。"
+    no_named_sessions:     "找不到已命名的工作階段。\n使用 `/title 我的工作階段` 為目前工作階段命名，然後使用 `/resume 我的工作階段` 返回。"
+    list_header:           "📋 **已命名工作階段**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\n用法：`/resume <工作階段名稱>`"
+    list_footer_numbered:  "\n用法：`/resume <會話名稱>` 或 `/resume <編號>`（例如，`/resume 1` 表示最近的會話）"
+    list_failed:           "無法列出工作階段：{error}"
+    out_of_range:          "恢復索引 {index} 超出範圍。\n請使用不帶參數的 `/resume` 查看可用會話。"
+    not_found:             "找不到符合 '**{name}**' 的工作階段。\n使用不帶參數的 `/resume` 檢視可用的工作階段。"
+    already_on:            "📌 已在工作階段 **{name}** 上。"
+    switch_failed:         "切換工作階段失敗。"
+    resumed_one:           "↻ 已恢復工作階段 **{title}**（{count} 則訊息）。對話已還原。"
+    resumed_many:          "↻ 已恢復工作階段 **{title}**（{count} 則訊息）。對話已還原。"
+    resumed_no_count:      "↻ 已恢復工作階段 **{title}**。對話已還原。"
 
   retry:
     no_previous: "沒有可重試的上一則訊息。"
@@ -614,6 +616,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command

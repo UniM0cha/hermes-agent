@@ -300,22 +300,22 @@ gateway:
       from the console with `hermes gateway restart`."
 
   resume:
-    db_unavailable: "Session database not available."
-    no_named_sessions: "No named sessions found.\nUse `/title My Session` to name
-      your current session, then `/resume My Session` to return to it later."
-    list_header: "📋 **Named Sessions**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\nUsage: `/resume <session name>`"
-    list_failed: "Could not list sessions: {error}"
-    not_found: "No session found matching '**{name}**'.\nUse `/resume` with no arguments
-      to see available sessions."
-    already_on: "📌 Already on session **{name}**."
-    switch_failed: "Failed to switch session."
-    resumed_one: "↻ Resumed session **{title}** ({count} message). Conversation restored."
-    resumed_many: "↻ Resumed session **{title}** ({count} messages). Conversation
-      restored."
-    resumed_no_count: "↻ Resumed session **{title}**. Conversation restored."
+    db_unavailable:        "Session database not available."
+    no_named_sessions:     "No named sessions found.\nUse `/title My Session` to name your current session, then `/resume My Session` to return to it later."
+    list_header:           "📋 **Named Sessions**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\nUsage: `/resume <session name>`"
+    list_footer_numbered:  "\nUsage: `/resume <session name>` or `/resume <number>` (e.g. `/resume 1` for the most recent)"
+    list_failed:           "Could not list sessions: {error}"
+    out_of_range:          "Resume index {index} is out of range.\nUse `/resume` with no arguments to see available sessions."
+    not_found:             "No session found matching '**{name}**'.\nUse `/resume` with no arguments to see available sessions."
+    already_on:            "📌 Already on session **{name}**."
+    switch_failed:         "Failed to switch session."
+    resumed_one:           "↻ Resumed session **{title}** ({count} message). Conversation restored."
+    resumed_many:          "↻ Resumed session **{title}** ({count} messages). Conversation restored."
+    resumed_no_count:      "↻ Resumed session **{title}**. Conversation restored."
 
   retry:
     no_previous: "No previous message to retry."
@@ -680,6 +680,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command

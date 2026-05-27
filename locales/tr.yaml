@@ -287,22 +287,22 @@ gateway:
       konsoldan `hermes gateway restart` ile yeniden başlatın."
 
   resume:
-    db_unavailable: "Oturum veritabanı kullanılamıyor."
-    no_named_sessions: "Adlandırılmış oturum bulunamadı.\nMevcut oturumu adlandırmak
-      için `/title Oturumum`, daha sonra geri dönmek için `/resume Oturumum` kullanın."
-    list_header: "📋 **Adlandırılmış Oturumlar**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\nKullanım: `/resume <oturum adı>`"
-    list_failed: "Oturumlar listelenemedi: {error}"
-    not_found: "'**{name}**' ile eşleşen oturum bulunamadı.\nKullanılabilir oturumları
-      görmek için argümansız `/resume` kullanın."
-    already_on: "📌 Zaten **{name}** oturumundasınız."
-    switch_failed: "Oturum değiştirilemedi."
-    resumed_one: "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri yüklendi."
-    resumed_many: "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri
-      yüklendi."
-    resumed_no_count: "↻ **{title}** oturumu sürdürüldü. Konuşma geri yüklendi."
+    db_unavailable:        "Oturum veritabanı kullanılamıyor."
+    no_named_sessions:     "Adlandırılmış oturum bulunamadı.\nMevcut oturumu adlandırmak için `/title Oturumum`, daha sonra geri dönmek için `/resume Oturumum` kullanın."
+    list_header:           "📋 **Adlandırılmış Oturumlar**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\nKullanım: `/resume <oturum adı>`"
+    list_footer_numbered:  "\nKullanım: `/resume <oturum adı>` veya `/resume <numara>` (örn. en yenisi için `/resume 1`)"
+    list_failed:           "Oturumlar listelenemedi: {error}"
+    out_of_range:          "Devam endeksi {index} aralık dışında.\nKullanılabilir oturumları görmek için `/resume` komutunu argümansız çalıştırın."
+    not_found:             "'**{name}**' ile eşleşen oturum bulunamadı.\nKullanılabilir oturumları görmek için argümansız `/resume` kullanın."
+    already_on:            "📌 Zaten **{name}** oturumundasınız."
+    switch_failed:         "Oturum değiştirilemedi."
+    resumed_one:           "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri yüklendi."
+    resumed_many:          "↻ **{title}** oturumu sürdürüldü ({count} mesaj). Konuşma geri yüklendi."
+    resumed_no_count:      "↻ **{title}** oturumu sürdürüldü. Konuşma geri yüklendi."
 
   retry:
     no_previous: "Yeniden denenecek önceki mesaj yok."
@@ -666,6 +666,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command

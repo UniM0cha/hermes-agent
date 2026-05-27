@@ -67,8 +67,8 @@ def _ensure_discord_mock():
 
 _ensure_discord_mock()
 
-import gateway.platforms.discord as discord_platform  # noqa: E402
-from gateway.platforms.discord import DiscordAdapter  # noqa: E402
+import plugins.platforms.discord.adapter as discord_platform  # noqa: E402
+from plugins.platforms.discord.adapter import DiscordAdapter  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -152,6 +152,7 @@ async def test_connect_only_requests_members_intent_when_needed(monkeypatch, all
     adapter = DiscordAdapter(PlatformConfig(enabled=True, token="test-token"))
 
     monkeypatch.setenv("DISCORD_ALLOWED_USERS", allowed_users)
+    monkeypatch.delenv("DISCORD_ALLOWED_ROLES", raising=False)
     monkeypatch.setattr("gateway.status.acquire_scoped_lock", lambda scope, identity, metadata=None: (True, None))
     monkeypatch.setattr("gateway.status.release_scoped_lock", lambda scope, identity: None)
 

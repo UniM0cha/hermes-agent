@@ -75,7 +75,7 @@ def _ensure_discord_mock():
 
 _ensure_discord_mock()
 
-from gateway.platforms.discord import DiscordAdapter  # noqa: E402
+from plugins.platforms.discord.adapter import DiscordAdapter  # noqa: E402
 
 
 class FakeTree:
@@ -165,7 +165,7 @@ def test_voice_slash_choices_include_realtime_modes(adapter, monkeypatch):
     client blocks values that are absent from the app-command choice list
     before Hermes receives the interaction.
     """
-    import gateway.platforms.discord as discord_platform
+    import plugins.platforms.discord.adapter as discord_platform
 
     def _capture_choices(**kwargs):
         def decorator(fn):

@@ -290,22 +290,22 @@ gateway:
       word nie, herbegin vanaf die konsole met `hermes gateway restart`."
 
   resume:
-    db_unavailable: "Sessie-databasis is nie beskikbaar nie."
-    no_named_sessions: "Geen benoemde sessies gevind nie.\nGebruik `/title My Sessie`
-      om jou huidige sessie 'n naam te gee, en dan `/resume My Sessie` om later daarheen
-      terug te keer."
-    list_header: "📋 **Benoemde Sessies**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\nGebruik: `/resume <session name>`"
-    list_failed: "Kon nie sessies lys nie: {error}"
-    not_found: "Geen sessie gevind wat by '**{name}**' pas nie.\nGebruik `/resume`
-      sonder argumente om beskikbare sessies te sien."
-    already_on: "📌 Reeds op sessie **{name}**."
-    switch_failed: "Kon nie sessie verander nie."
-    resumed_one: "↻ Sessie **{title}** hervat ({count} boodskap). Gesprek herstel."
-    resumed_many: "↻ Sessie **{title}** hervat ({count} boodskappe). Gesprek herstel."
-    resumed_no_count: "↻ Sessie **{title}** hervat. Gesprek herstel."
+    db_unavailable:        "Sessie-databasis is nie beskikbaar nie."
+    no_named_sessions:     "Geen benoemde sessies gevind nie.\nGebruik `/title My Sessie` om jou huidige sessie 'n naam te gee, en dan `/resume My Sessie` om later daarheen terug te keer."
+    list_header:           "📋 **Benoemde Sessies**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\nGebruik: `/resume <session name>`"
+    list_footer_numbered:  "\nGebruik: `/resume <sessienaam>` of `/resume <nommer>` (bv. `/resume 1` vir die mees onlangse)"
+    list_failed:           "Kon nie sessies lys nie: {error}"
+    out_of_range:          "Hervat-indeks {index} is buite bereik.\nGebruik `/resume` sonder argumente om beskikbare sessies te sien."
+    not_found:             "Geen sessie gevind wat by '**{name}**' pas nie.\nGebruik `/resume` sonder argumente om beskikbare sessies te sien."
+    already_on:            "📌 Reeds op sessie **{name}**."
+    switch_failed:         "Kon nie sessie verander nie."
+    resumed_one:           "↻ Sessie **{title}** hervat ({count} boodskap). Gesprek herstel."
+    resumed_many:          "↻ Sessie **{title}** hervat ({count} boodskappe). Gesprek herstel."
+    resumed_no_count:      "↻ Sessie **{title}** hervat. Gesprek herstel."
 
   retry:
     no_previous: "Geen vorige boodskap om te herhaal nie."
@@ -674,6 +674,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command

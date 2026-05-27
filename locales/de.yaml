@@ -296,24 +296,22 @@ gateway:
       neu."
 
   resume:
-    db_unavailable: "Sitzungsdatenbank nicht verfügbar."
-    no_named_sessions: "Keine benannten Sitzungen gefunden.\nVerwenden Sie `/title
-      Meine Sitzung`, um die aktuelle Sitzung zu benennen, dann `/resume Meine Sitzung`,
-      um später dorthin zurückzukehren."
-    list_header: "📋 **Benannte Sitzungen**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\nVerwendung: `/resume <Sitzungsname>`"
-    list_failed: "Sitzungen konnten nicht aufgelistet werden: {error}"
-    not_found: "Keine Sitzung passend zu '**{name}**' gefunden.\nVerwenden Sie `/resume`
-      ohne Argumente, um verfügbare Sitzungen zu sehen."
-    already_on: "📌 Bereits in Sitzung **{name}**."
-    switch_failed: "Sitzungswechsel fehlgeschlagen."
-    resumed_one: "↻ Sitzung **{title}** fortgesetzt ({count} Nachricht). Konversation
-      wiederhergestellt."
-    resumed_many: "↻ Sitzung **{title}** fortgesetzt ({count} Nachrichten). Konversation
-      wiederhergestellt."
-    resumed_no_count: "↻ Sitzung **{title}** fortgesetzt. Konversation wiederhergestellt."
+    db_unavailable:        "Sitzungsdatenbank nicht verfügbar."
+    no_named_sessions:     "Keine benannten Sitzungen gefunden.\nVerwenden Sie `/title Meine Sitzung`, um die aktuelle Sitzung zu benennen, dann `/resume Meine Sitzung`, um später dorthin zurückzukehren."
+    list_header:           "📋 **Benannte Sitzungen**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\nVerwendung: `/resume <Sitzungsname>`"
+    list_footer_numbered:  "\nVerwendung: `/resume <Sitzungsname>` oder `/resume <Nummer>` (z. B. `/resume 1` für die zuletzt verwendete)"
+    list_failed:           "Sitzungen konnten nicht aufgelistet werden: {error}"
+    out_of_range:          "Wiederaufnahme-Index {index} liegt außerhalb des gültigen Bereichs.\nVerwenden Sie `/resume` ohne Argumente, um verfügbare Sitzungen anzuzeigen."
+    not_found:             "Keine Sitzung passend zu '**{name}**' gefunden.\nVerwenden Sie `/resume` ohne Argumente, um verfügbare Sitzungen zu sehen."
+    already_on:            "📌 Bereits in Sitzung **{name}**."
+    switch_failed:         "Sitzungswechsel fehlgeschlagen."
+    resumed_one:           "↻ Sitzung **{title}** fortgesetzt ({count} Nachricht). Konversation wiederhergestellt."
+    resumed_many:          "↻ Sitzung **{title}** fortgesetzt ({count} Nachrichten). Konversation wiederhergestellt."
+    resumed_no_count:      "↻ Sitzung **{title}** fortgesetzt. Konversation wiederhergestellt."
 
   retry:
     no_previous: "Keine vorherige Nachricht zum Wiederholen."
@@ -685,6 +683,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command

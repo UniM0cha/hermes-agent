@@ -295,22 +295,22 @@ gateway:
       секунд, перезапустіть із консолі командою `hermes gateway restart`."
 
   resume:
-    db_unavailable: "База даних сеансів недоступна."
-    no_named_sessions: "Іменованих сеансів не знайдено.\nВикористайте `/title Мій
-      сеанс`, щоб назвати поточний сеанс, потім `/resume Мій сеанс`, щоб повернутися
-      до нього."
-    list_header: "📋 **Іменовані сеанси**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\nВикористання: `/resume <назва сеансу>`"
-    list_failed: "Не вдалося отримати список сеансів: {error}"
-    not_found: "Сеанс, що відповідає '**{name}**', не знайдено.\nВикористайте `/resume`
-      без аргументів, щоб побачити доступні сеанси."
-    already_on: "📌 Уже в сеансі **{name}**."
-    switch_failed: "Не вдалося переключити сеанс."
-    resumed_one: "↻ Сеанс **{title}** відновлено ({count} повідомлення). Розмову відновлено."
-    resumed_many: "↻ Сеанс **{title}** відновлено ({count} повідомлень). Розмову відновлено."
-    resumed_no_count: "↻ Сеанс **{title}** відновлено. Розмову відновлено."
+    db_unavailable:        "База даних сеансів недоступна."
+    no_named_sessions:     "Іменованих сеансів не знайдено.\nВикористайте `/title Мій сеанс`, щоб назвати поточний сеанс, потім `/resume Мій сеанс`, щоб повернутися до нього."
+    list_header:           "📋 **Іменовані сеанси**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\nВикористання: `/resume <назва сеансу>`"
+    list_footer_numbered:  "\nВикористання: `/resume <назва сесії>` або `/resume <номер>` (наприклад, `/resume 1` для найновішої)"
+    list_failed:           "Не вдалося отримати список сеансів: {error}"
+    out_of_range:          "Індекс відновлення {index} поза межами діапазону.\nВикористовуйте `/resume` без аргументів, щоб переглянути доступні сесії."
+    not_found:             "Сеанс, що відповідає '**{name}**', не знайдено.\nВикористайте `/resume` без аргументів, щоб побачити доступні сеанси."
+    already_on:            "📌 Уже в сеансі **{name}**."
+    switch_failed:         "Не вдалося переключити сеанс."
+    resumed_one:           "↻ Сеанс **{title}** відновлено ({count} повідомлення). Розмову відновлено."
+    resumed_many:          "↻ Сеанс **{title}** відновлено ({count} повідомлень). Розмову відновлено."
+    resumed_no_count:      "↻ Сеанс **{title}** відновлено. Розмову відновлено."
 
   retry:
     no_previous: "Немає попереднього повідомлення для повторення."
@@ -680,6 +680,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command

@@ -112,7 +112,7 @@ def _clear_env(monkeypatch):
 
 
 def test_voice_receiver_pcm_stream_callback_can_bypass_utterance_buffering(monkeypatch):
-    from gateway.platforms.discord import VoiceReceiver
+    from plugins.platforms.discord.adapter import VoiceReceiver
 
     receiver = VoiceReceiver(MagicMock())
     receiver._running = True

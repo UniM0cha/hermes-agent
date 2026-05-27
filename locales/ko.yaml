@@ -258,20 +258,22 @@ gateway:
       재시작하세요."
 
   resume:
-    db_unavailable: "세션 데이터베이스를 사용할 수 없습니다."
-    no_named_sessions: "이름이 지정된 세션이 없습니다.\n현재 세션에 이름을 지정하려면 `/title 내 세션`을 사용하고, 나중에
-      `/resume 내 세션`으로 돌아오세요."
-    list_header: "📋 **이름이 지정된 세션**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\n사용법: `/resume <session name>`"
-    list_failed: "세션 목록을 가져올 수 없습니다: {error}"
-    not_found: "'**{name}**'와 일치하는 세션이 없습니다.\n사용 가능한 세션을 보려면 인수 없이 `/resume`을 사용하세요."
-    already_on: "📌 이미 **{name}** 세션에 있습니다."
-    switch_failed: "세션 전환에 실패했습니다."
-    resumed_one: "↻ **{title}** 세션 재개됨 (메시지 {count}개). 대화가 복원되었습니다."
-    resumed_many: "↻ **{title}** 세션 재개됨 (메시지 {count}개). 대화가 복원되었습니다."
-    resumed_no_count: "↻ **{title}** 세션 재개됨. 대화가 복원되었습니다."
+    db_unavailable:        "세션 데이터베이스를 사용할 수 없습니다."
+    no_named_sessions:     "이름이 지정된 세션이 없습니다.\n현재 세션에 이름을 지정하려면 `/title 내 세션`을 사용하고, 나중에 `/resume 내 세션`으로 돌아오세요."
+    list_header:           "📋 **이름이 지정된 세션**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\n사용법: `/resume <session name>`"
+    list_footer_numbered:  "\n사용법: `/resume <세션 이름>` 또는 `/resume <번호>` (예: 가장 최근 세션은 `/resume 1`)"
+    list_failed:           "세션 목록을 가져올 수 없습니다: {error}"
+    out_of_range:          "재개 인덱스 {index}이(가) 범위를 벗어났습니다.\n인자 없이 `/resume`을 실행하면 사용 가능한 세션이 표시됩니다."
+    not_found:             "'**{name}**'와 일치하는 세션이 없습니다.\n사용 가능한 세션을 보려면 인수 없이 `/resume`을 사용하세요."
+    already_on:            "📌 이미 **{name}** 세션에 있습니다."
+    switch_failed:         "세션 전환에 실패했습니다."
+    resumed_one:           "↻ **{title}** 세션 재개됨 (메시지 {count}개). 대화가 복원되었습니다."
+    resumed_many:          "↻ **{title}** 세션 재개됨 (메시지 {count}개). 대화가 복원되었습니다."
+    resumed_no_count:      "↻ **{title}** 세션 재개됨. 대화가 복원되었습니다."
 
   retry:
     no_previous: "재시도할 이전 메시지가 없습니다."
@@ -618,6 +620,7 @@ gateway_runtime:
   elapsed_min: '{minutes}분 경과'
   busy_steered: ⏩ 현재 실행 중인 작업에 방향 지시를 넣었습니다{status_detail}. 다음 도구 호출 뒤 반영됩니다.
   busy_queued: ⏳ 다음 차례에 실행하도록 대기열에 넣었습니다{status_detail}. 현재 작업이 끝나면 답변하겠습니다.
+  busy_subagent_queued: ⏳ 서브에이전트가 작업 중입니다{status_detail} — 완료되면 메시지가 처리되도록 대기열에 넣었습니다(모두 취소하려면 /stop 사용).
   busy_interrupting: ⚡ 현재 작업을 중단하고 있습니다{status_detail}. 곧 방금 메시지에 답변하겠습니다.
   dangerous_command: 위험할 수 있는 명령
   command_approval_text: "⚠️ **명령 승인 필요:**\n```\n{command}\n```\n사유: {reason}\n\n\

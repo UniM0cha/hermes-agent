@@ -295,22 +295,22 @@ gateway:
       reinicia a partir da consola com `hermes gateway restart`."
 
   resume:
-    db_unavailable: "Base de dados de sessões indisponível."
-    no_named_sessions: "Não foram encontradas sessões com nome.\nUsa `/title A minha
-      sessão` para nomear a sessão atual e depois `/resume A minha sessão` para voltar
-      a ela."
-    list_header: "📋 **Sessões com nome**\n"
-    list_item: "• **{title}**{preview_part}"
-    list_preview_suffix: " — _{preview}_"
-    list_footer: "\nUso: `/resume <nome da sessão>`"
-    list_failed: "Não foi possível listar as sessões: {error}"
-    not_found: "Não foi encontrada nenhuma sessão correspondente a '**{name}**'.\n\
-      Usa `/resume` sem argumentos para ver as sessões disponíveis."
-    already_on: "📌 Já estás na sessão **{name}**."
-    switch_failed: "Falha ao mudar de sessão."
-    resumed_one: "↻ Sessão **{title}** retomada ({count} mensagem). Conversa restaurada."
-    resumed_many: "↻ Sessão **{title}** retomada ({count} mensagens). Conversa restaurada."
-    resumed_no_count: "↻ Sessão **{title}** retomada. Conversa restaurada."
+    db_unavailable:        "Base de dados de sessões indisponível."
+    no_named_sessions:     "Não foram encontradas sessões com nome.\nUsa `/title A minha sessão` para nomear a sessão atual e depois `/resume A minha sessão` para voltar a ela."
+    list_header:           "📋 **Sessões com nome**\n"
+    list_item:             "• **{title}**{preview_part}"
+    list_item_numbered:    "{index}. **{title}**{preview_part}"
+    list_preview_suffix:   " — _{preview}_"
+    list_footer:           "\nUso: `/resume <nome da sessão>`"
+    list_footer_numbered:  "\nUso: `/resume <nome da sessão>` ou `/resume <número>` (ex.: `/resume 1` para a mais recente)"
+    list_failed:           "Não foi possível listar as sessões: {error}"
+    out_of_range:          "O índice de retomada {index} está fora do intervalo.\nUse `/resume` sem argumentos para ver as sessões disponíveis."
+    not_found:             "Não foi encontrada nenhuma sessão correspondente a '**{name}**'.\nUsa `/resume` sem argumentos para ver as sessões disponíveis."
+    already_on:            "📌 Já estás na sessão **{name}**."
+    switch_failed:         "Falha ao mudar de sessão."
+    resumed_one:           "↻ Sessão **{title}** retomada ({count} mensagem). Conversa restaurada."
+    resumed_many:          "↻ Sessão **{title}** retomada ({count} mensagens). Conversa restaurada."
+    resumed_no_count:      "↻ Sessão **{title}** retomada. Conversa restaurada."
 
   retry:
     no_previous: "Não há mensagem anterior para tentar novamente."
@@ -683,6 +683,7 @@ gateway_runtime:
     after the next tool call.
   busy_queued: ⏳ Queued for the next turn{status_detail}. I'll respond once the
     current task finishes.
+  busy_subagent_queued: ⏳ Subagent working{status_detail} — your message is queued for when it finishes (use /stop to cancel everything).
   busy_interrupting: ⚡ Interrupting current task{status_detail}. I'll respond to
     your message shortly.
   dangerous_command: dangerous command
