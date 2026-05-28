@@ -4012,6 +4012,43 @@ class DiscordAdapter(BasePlatformAdapter):
         except Exception:
             return None
 
+    async def rename_thread(
+        self,
+        *,
+        thread_id: str | int,
+        name: str,
+        reason: str | None = None,
+    ) -> None:
+        """Rename an existing Discord thread by ID."""
+        if not self._client or not DISCORD_AVAILABLE or discord is None:
+            return
+
+        try:
+            resolved_thread_id = int(thread_id)
+        except (TypeError, ValueError):
+            return
+
+        thread = self._client.get_channel(resolved_thread_id)
+        if thread is None:
+            try:
+                thread = await self._client.fetch_channel(resolved_thread_id)
+            except Exception:
+                return
+        thread_cls = getattr(discord, "Thread", None)
+        if thread is None or (thread_cls is not None and not isinstance(thread, thread_cls)):
+            return
+
+        if reason:
+            await thread.edit(name=name, reason=reason)
+        else:
+            await thread.edit(name=name)
+        logger.info(
+            "[%s] Renamed Discord thread %s -> '%s'",
+            self.name,
+            thread_id,
+            name,
+        )
+
     async def _create_thread(
         self,
         interaction: discord.Interaction,

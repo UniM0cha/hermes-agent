@@ -2210,6 +2210,14 @@ class GatewayRunner:
             return False
         return True
 
+    def _is_discord_thread_lane(self, source: SessionSource) -> bool:
+        """True when the session source is a Discord thread."""
+        if source.platform != Platform.DISCORD:
+            return False
+        if str(source.chat_type or "") != "thread":
+            return False
+        return bool(str(source.thread_id or source.chat_id or ""))
+
     _TELEGRAM_LOBBY_REMINDER_COOLDOWN_S = 30.0
 
     def _should_send_telegram_lobby_reminder(self, source: SessionSource) -> bool:
@@ -12606,6 +12614,92 @@ class GatewayRunner:
 
         future.add_done_callback(_log_rename_failure)
 
+    def _sanitize_discord_thread_title(self, title: str) -> str:
+        """Return a Discord-safe thread title from a generated session title."""
+        cleaned = re.sub(r"\s+", " ", str(title or "")).strip()
+        if not cleaned:
+            return "Hermes"
+        # Generated titles are already capped to 80 chars, but keep a local
+        # clamp here so direct helper callers remain safe.
+        if len(cleaned) > 95:
+            cleaned = cleaned[:92].rstrip() + "..."
+        return cleaned
+
+    async def _rename_discord_thread_for_session_title(
+        self,
+        source: SessionSource,
+        session_id: str,
+        title: str,
+    ) -> None:
+        """Best-effort rename of a Discord thread when Hermes auto-titles a session."""
+        if not self._is_discord_thread_lane(source):
+            return
+
+        adapter = self.adapters.get(source.platform) if getattr(self, "adapters", None) else None
+        if adapter is None:
+            return
+
+        thread_id = str(source.thread_id or source.chat_id or "")
+        if not thread_id:
+            return
+
+        thread_name = self._sanitize_discord_thread_title(title)
+        try:
+            rename_thread = getattr(adapter, "rename_thread", None)
+            if rename_thread is None:
+                return
+            await rename_thread(
+                thread_id=thread_id,
+                name=thread_name,
+                reason="Hermes auto-generated session title",
+            )
+        except Exception:
+            logger.debug("Failed to rename Discord thread for auto-generated title", exc_info=True)
+
+    def _schedule_discord_thread_title_rename(
+        self,
+        source: SessionSource,
+        session_id: str,
+        title: str,
+    ) -> None:
+        """Schedule a Discord thread rename from the auto-title background thread."""
+        if not title or not self._is_discord_thread_lane(source):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = getattr(self, "_gateway_loop", None)
+        if loop is None or loop.is_closed():
+            return
+        try:
+            copied_source = dataclasses.replace(source)
+        except Exception:
+            copied_source = source
+        future = safe_schedule_threadsafe(
+            self._rename_discord_thread_for_session_title(copied_source, session_id, title),
+            loop,
+            logger=logger,
+            log_message="Discord thread title rename failed to schedule",
+        )
+        if future is None:
+            return
+
+        def _log_rename_failure(fut) -> None:
+            try:
+                fut.result()
+            except Exception:
+                logger.debug("Discord thread title rename failed", exc_info=True)
+
+        future.add_done_callback(_log_rename_failure)
+
+    def _auto_title_callback_for_source(self, source: SessionSource, session_id: str):
+        """Return a best-effort post-auto-title callback for the current source."""
+        if self._is_telegram_topic_lane(source):
+            return lambda title: self._schedule_telegram_topic_title_rename(source, session_id, title)
+        if self._is_discord_thread_lane(source):
+            return lambda title: self._schedule_discord_thread_title_rename(source, session_id, title)
+        return None
+
     _TELEGRAM_CAPABILITY_HINT_COOLDOWN_S = 300.0
 
     def _should_send_telegram_capability_hint(self, source: SessionSource) -> bool:
@@ -17366,12 +17460,9 @@ class GatewayRunner:
                             "api_mode": getattr(agent, "api_mode", None),
                         } if agent else None,
                     }
-                    if self._is_telegram_topic_lane(source):
-                        maybe_auto_title_kwargs["title_callback"] = lambda title: self._schedule_telegram_topic_title_rename(
-                            source,
-                            effective_session_id,
-                            title,
-                        )
+                    title_callback = self._auto_title_callback_for_source(source, effective_session_id)
+                    if title_callback is not None:
+                        maybe_auto_title_kwargs["title_callback"] = title_callback
                     maybe_auto_title(
                         self._session_db,
                         effective_session_id,

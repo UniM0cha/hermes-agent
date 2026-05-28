@@ -113,6 +113,24 @@ class TestGenerateTitle:
         user_content = captured_kwargs["messages"][1]["content"]
         assert len(user_content) < 1100  # 500 + 500 + formatting
 
+    def test_prompt_prefers_korean_titles_when_reasonable(self):
+        """Auto-title prompting should nudge the model toward Korean titles."""
+        captured_kwargs = {}
+
+        def mock_call_llm(**kwargs):
+            captured_kwargs.update(kwargs)
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = "짧은 제목"
+            return resp
+
+        with patch("agent.title_generator.call_llm", side_effect=mock_call_llm):
+            title = generate_title("스레드 제목을 한국어로 해줘", "좋습니다. 그렇게 해보겠습니다.")
+
+        assert title == "짧은 제목"
+        system_prompt = captured_kwargs["messages"][0]["content"]
+        assert "Prefer natural Korean titles when reasonable" in system_prompt
+
 
 class TestAutoTitleSession:
     """Tests for auto_title_session() — the sync worker function."""
