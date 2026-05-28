@@ -21,7 +21,7 @@ import logging
 import os
 import time
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -420,7 +420,14 @@ def _consume_codex_event_stream(
     return final
 
 
-def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta=None):
+def run_codex_stream(
+    agent,
+    api_kwargs: dict,
+    client: Any = None,
+    on_first_delta: Callable | None = None,
+    *,
+    on_stream_event: Callable | None = None,
+):
     """Execute one streaming Responses API request and return the final response.
 
     Uses ``responses.create(stream=True)`` (low-level raw event iteration)
@@ -436,6 +443,27 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
     # Accumulate streamed text so callers / compat shims can read it.
     agent._codex_streamed_text_parts: list = []
 
+    def _notify_event(event_type: str | None, *, progress: bool = False) -> None:
+        if on_stream_event is None:
+            return
+        try:
+            on_stream_event(event_type or "unknown", progress=progress)
+        except Exception:
+            pass
+
+    def _event_delta_text(event: Any) -> str:
+        delta = _event_field(event, "delta", "")
+        return delta if isinstance(delta, str) else ""
+
+    def _is_progress_event(event_type: str, event: Any) -> bool:
+        if "function_call" in event_type:
+            return True
+        if "output_text.delta" in event_type:
+            return bool(_event_delta_text(event))
+        if "reasoning" in event_type and "delta" in event_type:
+            return bool(_event_delta_text(event))
+        return False
+
     def _on_text_delta(text: str) -> None:
         agent._codex_streamed_text_parts.append(text)
         agent._fire_stream_delta(text)
@@ -447,6 +475,10 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
         # TTFB watchdog and activity touch — runs once per SSE event.
         agent._codex_stream_last_event_ts = time.time()
         agent._touch_activity("receiving stream response")
+        event_type = _event_field(event, "type", "")
+        if not isinstance(event_type, str):
+            event_type = ""
+        _notify_event(event_type, progress=_is_progress_event(event_type, event))
 
     def _interrupt_check() -> bool:
         return bool(agent._interrupt_requested)
@@ -516,7 +548,13 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
                     pass
 
 
-def run_codex_create_stream_fallback(agent, api_kwargs: dict, client: Any = None):
+def run_codex_create_stream_fallback(
+    agent,
+    api_kwargs: dict,
+    client: Any = None,
+    *,
+    on_stream_event: Callable | None = None,
+):
     """Backward-compatible alias for the unified event-driven path.
 
     Historically this was the fallback when the SDK's high-level
@@ -525,7 +563,12 @@ def run_codex_create_stream_fallback(agent, api_kwargs: dict, client: Any = None
     Kept as a public symbol because tests and a small number of call sites
     still reference it by name.
     """
-    return run_codex_stream(agent, api_kwargs, client=client)
+    return run_codex_stream(
+        agent,
+        api_kwargs,
+        client=client,
+        on_stream_event=on_stream_event,
+    )
 
 
 __all__ = [

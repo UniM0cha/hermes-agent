@@ -80,7 +80,7 @@ def test_ttfb_kills_when_no_stream_event(tmp_path, monkeypatch):
 
     stop = {"flag": False}
 
-    def fake_hang(api_kwargs, client=None, on_first_delta=None):
+    def fake_hang(api_kwargs, client=None, on_first_delta=None, on_stream_event=None):
         # Never set _codex_stream_last_event_ts: simulate zero events arriving.
         deadline = time.time() + 30
         while time.time() < deadline and not stop["flag"] and not agent._interrupt_requested:
@@ -213,7 +213,7 @@ def test_ttfb_does_not_kill_when_events_flow(tmp_path, monkeypatch):
 
     sentinel = SimpleNamespace(ok=True)
 
-    def fake_stream(api_kwargs, client=None, on_first_delta=None):
+    def fake_stream(api_kwargs, client=None, on_first_delta=None, on_stream_event=None):
         # Bytes flowing: mark stream activity right away, then keep generating
         # past the 1s TTFB cutoff before returning a real response.
         agent._codex_stream_last_event_ts = time.time()
@@ -297,7 +297,7 @@ def test_ttfb_disabled_via_env_zero(tmp_path, monkeypatch):
 
     sentinel = SimpleNamespace(ok=True)
 
-    def fake_stream(api_kwargs, client=None, on_first_delta=None):
+    def fake_stream(api_kwargs, client=None, on_first_delta=None, on_stream_event=None):
         # No event marker, but only briefly — well under the 60s stale timeout.
         time.sleep(2.0)
         return sentinel

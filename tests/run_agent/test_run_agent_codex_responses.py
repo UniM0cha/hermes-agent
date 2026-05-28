@@ -483,6 +483,58 @@ def test_run_codex_stream_parses_create_stream_events(monkeypatch):
     assert response.status == "completed"
 
 
+def test_run_codex_stream_reports_provider_events_to_callback(monkeypatch):
+    agent = _build_agent(monkeypatch)
+    seen_events = []
+    output_item = SimpleNamespace(
+        type="message",
+        status="completed",
+        content=[SimpleNamespace(type="output_text", text="stream ok")],
+    )
+    create_stream = _FakeCreateStream(
+        [
+            SimpleNamespace(type="response.created"),
+            SimpleNamespace(type="response.in_progress"),
+            {"type": "response.reasoning_summary_text.delta", "delta": "thinking"},
+            {"type": "response.output_text.delta", "delta": "hi"},
+            {"type": "response.function_call_arguments.delta", "delta": "{}"},
+            SimpleNamespace(type="response.output_item.done", item=output_item),
+            SimpleNamespace(
+                type="response.completed",
+                response=SimpleNamespace(status="completed", id="resp_stream_ok", usage=None),
+            ),
+        ]
+    )
+
+    def _fake_create(**kwargs):
+        assert kwargs.get("stream") is True
+        return create_stream
+
+    agent.client = SimpleNamespace(
+        responses=SimpleNamespace(create=_fake_create),
+    )
+
+    response = agent._run_codex_stream(
+        _codex_request_kwargs(),
+        on_stream_event=lambda event_type, *, progress=False: seen_events.append(
+            (event_type, progress)
+        ),
+    )
+
+    assert create_stream.closed is True
+    assert response.id == "resp_stream_ok"
+    assert response.output == [output_item]
+    assert seen_events == [
+        ("response.created", False),
+        ("response.in_progress", False),
+        ("response.reasoning_summary_text.delta", True),
+        ("response.output_text.delta", True),
+        ("response.function_call_arguments.delta", True),
+        ("response.output_item.done", False),
+        ("response.completed", False),
+    ]
+
+
 def test_run_codex_stream_ignores_completed_response_with_null_output(monkeypatch):
     """Regression: Codex may send response.completed.response.output=null.
 

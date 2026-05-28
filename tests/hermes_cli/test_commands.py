@@ -20,6 +20,7 @@ from hermes_cli.commands import (
     _sanitize_telegram_name,
     discord_skill_commands,
     gateway_help_lines,
+    localized_command_description,
     resolve_command,
     slack_app_manifest,
     slack_native_slashes,
@@ -36,6 +37,13 @@ def _completions(completer: SlashCommandCompleter, text: str):
             CompleteEvent(completion_requested=True),
         )
     )
+
+
+def _force_language(monkeypatch, lang: str) -> None:
+    from agent.i18n import reset_language_cache
+
+    monkeypatch.setenv("HERMES_LANGUAGE", lang)
+    reset_language_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +94,16 @@ class TestCommandRegistry:
         for cmd in COMMAND_REGISTRY:
             assert not (cmd.cli_only and cmd.gateway_only), \
                 f"{cmd.name} cannot be both cli_only and gateway_only"
+
+    def test_gateway_command_descriptions_have_catalog_entries(self):
+        from agent.i18n import t
+
+        for cmd in COMMAND_REGISTRY:
+            key = f"commands.descriptions.{cmd.name}"
+            assert t(key, lang="en") != key, f"Missing i18n key: {key}"
+        for name in ("reset", "thread", "skill"):
+            key = f"commands.descriptions.{name}"
+            assert t(key, lang="en") != key, f"Missing i18n key: {key}"
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +233,30 @@ class TestGatewayHelpLines:
         assert len(bg_line) == 1
         assert "/bg" in bg_line[0]
 
+    def test_descriptions_follow_language(self, monkeypatch):
+        from agent.i18n import reset_language_cache
+
+        _force_language(monkeypatch, "ko")
+        try:
+            lines = gateway_help_lines()
+            status_line = next(line for line in lines if line.startswith("`/status`"))
+            assert "세션 정보 보기" in status_line
+            background_line = next(line for line in lines if line.startswith("`/background"))
+            assert "별칭:" in background_line
+        finally:
+            reset_language_cache()
+
+
+class TestLocalizedCommandDescription:
+    def test_uses_catalog_for_active_language(self, monkeypatch):
+        from agent.i18n import reset_language_cache
+
+        _force_language(monkeypatch, "ko")
+        try:
+            assert localized_command_description("status") == "세션 정보 보기"
+        finally:
+            reset_language_cache()
+
 
 class TestTelegramBotCommands:
     def test_returns_list_of_tuples(self):
@@ -257,6 +299,17 @@ class TestTelegramBotCommands:
         names = {name for name, _ in telegram_bot_commands()}
         assert "codex_runtime" in names
         assert "codex-runtime" not in names
+
+    def test_descriptions_follow_language(self, monkeypatch):
+        from agent.i18n import reset_language_cache
+
+        _force_language(monkeypatch, "ko")
+        try:
+            descriptions = dict(telegram_bot_commands())
+            assert descriptions["status"] == "세션 정보 보기"
+            assert descriptions["sethome"] == "이 채팅을 홈 채널로 설정"
+        finally:
+            reset_language_cache()
 
 
 class TestSlackSubcommandMap:
@@ -370,6 +423,17 @@ class TestSlackNativeSlashes:
         assert not missing, (
             f"commands on Telegram but missing from Slack native slashes: {sorted(missing)}"
         )
+
+    def test_descriptions_follow_language(self, monkeypatch):
+        from agent.i18n import reset_language_cache
+
+        _force_language(monkeypatch, "ko")
+        try:
+            descriptions = {name: desc for name, desc, _hint in slack_native_slashes()}
+            assert descriptions["hermes"] == "Hermes에게 말하거나 하위 명령 실행"
+            assert descriptions["model"] == "이 세션의 모델 변경"
+        finally:
+            reset_language_cache()
 
 
 class TestSlackAppManifest:
@@ -626,6 +690,8 @@ class TestSubcommands:
         assert "/voice" in SUBCOMMANDS
         assert "on" in SUBCOMMANDS["/voice"]
         assert "off" in SUBCOMMANDS["/voice"]
+        assert "realtime" in SUBCOMMANDS["/voice"]
+        assert "rt" in SUBCOMMANDS["/voice"]
 
     def test_cron_has_subcommands(self):
         assert "/cron" in SUBCOMMANDS

@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import tools.approval as approval_module
+from agent.i18n import reset_language_cache
 from tools.approval import (
     approve_session,
     check_all_command_guards,
@@ -32,6 +33,33 @@ def _tirith_result(action="allow", findings=None, summary=""):
 _TIRITH_PATCH = "tools.tirith_security.check_command_security"
 
 
+def _lookalike_tld_finding(tld=".dev"):
+    return {
+        "rule_id": "lookalike_tld",
+        "severity": "MEDIUM",
+        "title": "Lookalike TLD detected",
+        "description": f"Domain uses '{tld}' TLD which can be confused with file extensions",
+        "evidence": [{"type": "url", "raw": f"example{tld}"}],
+    }
+
+
+def _pipe_to_interpreter_finding(source="git", interpreter="python3"):
+    return {
+        "rule_id": "pipe_to_interpreter",
+        "severity": "HIGH",
+        "title": f"Pipe to interpreter: {source} | {interpreter}",
+        "description": (
+            f"Command pipes output from '{source}' directly to interpreter "
+            f"'{interpreter}'. Downloaded content will be executed without inspection."
+        ),
+        "evidence": [{
+            "type": "command_pattern",
+            "pattern": "pipe to interpreter",
+            "matched": f"{source} diff | {interpreter} - <<'PY'",
+        }],
+    }
+
+
 @pytest.fixture(autouse=True)
 def _clean_state():
     """Clear approval state and relevant env vars between tests."""
@@ -39,17 +67,74 @@ def _clean_state():
     approval_module._pending.clear()
     approval_module._permanent_approved.clear()
     saved = {}
-    for k in ("HERMES_INTERACTIVE", "HERMES_GATEWAY_SESSION", "HERMES_EXEC_ASK", "HERMES_YOLO_MODE"):
+    for k in ("HERMES_INTERACTIVE", "HERMES_GATEWAY_SESSION", "HERMES_EXEC_ASK", "HERMES_YOLO_MODE", "HERMES_LANGUAGE"):
         if k in os.environ:
             saved[k] = os.environ.pop(k)
+    os.environ["HERMES_LANGUAGE"] = "en"
+    reset_language_cache()
     yield
     approval_module._session_approved.clear()
     approval_module._pending.clear()
     approval_module._permanent_approved.clear()
+    for k in ("HERMES_INTERACTIVE", "HERMES_GATEWAY_SESSION", "HERMES_EXEC_ASK", "HERMES_YOLO_MODE", "HERMES_LANGUAGE"):
+        os.environ.pop(k, None)
     for k, v in saved.items():
         os.environ[k] = v
-    for k in ("HERMES_INTERACTIVE", "HERMES_GATEWAY_SESSION", "HERMES_EXEC_ASK", "HERMES_YOLO_MODE"):
-        os.environ.pop(k, None)
+    reset_language_cache()
+
+
+# ---------------------------------------------------------------------------
+# Tirith description localization
+# ---------------------------------------------------------------------------
+
+class TestTirithDescriptionLocalization:
+    def test_lookalike_tld_default_english_preserved(self):
+        desc = approval_module._format_tirith_description(
+            _tirith_result("warn", [_lookalike_tld_finding(".dev")])
+        )
+        assert desc == (
+            "Security scan — [MEDIUM] Lookalike TLD detected: "
+            "Domain uses '.dev' TLD which can be confused with file extensions"
+        )
+
+    def test_lookalike_tld_korean_localized(self):
+        os.environ["HERMES_LANGUAGE"] = "ko"
+        reset_language_cache()
+        desc = approval_module._format_tirith_description(
+            _tirith_result("warn", [_lookalike_tld_finding(".dev")])
+        )
+        assert desc == (
+            "보안 검사 — [중간 위험] 유사 TLD 감지: "
+            "도메인이 파일 확장자와 혼동될 수 있는 '.dev' TLD를 사용합니다"
+        )
+
+    def test_pipe_to_interpreter_korean_localized(self):
+        os.environ["HERMES_LANGUAGE"] = "ko"
+        reset_language_cache()
+        desc = approval_module._format_tirith_description(
+            _tirith_result("block", [_pipe_to_interpreter_finding("git", "python3")])
+        )
+        assert desc == (
+            "보안 검사 — [높은 위험] 인터프리터로 파이프 전달: git | python3: "
+            "명령이 'git'의 출력을 인터프리터 'python3'에 직접 전달합니다. "
+            "다운로드된 내용이 검사 없이 실행될 수 있습니다."
+        )
+
+    def test_unknown_rule_preserves_raw_title_and_description(self):
+        os.environ["HERMES_LANGUAGE"] = "ko"
+        reset_language_cache()
+        desc = approval_module._format_tirith_description(
+            _tirith_result(
+                "warn",
+                [{
+                    "rule_id": "new_rule",
+                    "severity": "MEDIUM",
+                    "title": "New scanner title",
+                    "description": "New scanner description",
+                }],
+            )
+        )
+        assert desc == "보안 검사 — [중간 위험] New scanner title: New scanner description"
 
 
 # ---------------------------------------------------------------------------

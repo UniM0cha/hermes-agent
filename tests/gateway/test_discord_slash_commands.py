@@ -158,6 +158,39 @@ async def test_registers_native_restart_slash_command(adapter):
     )
 
 
+def test_voice_slash_choices_include_realtime_modes(adapter, monkeypatch):
+    """Discord's native /voice picker must accept realtime/rt values.
+
+    Gateway text dispatch already accepts `/voice realtime`, but Discord's
+    client blocks values that are absent from the app-command choice list
+    before Hermes receives the interaction.
+    """
+    import plugins.platforms.discord.adapter as discord_platform
+
+    def _capture_choices(**kwargs):
+        def decorator(fn):
+            fn._test_app_command_choices = kwargs
+            return fn
+
+        return decorator
+
+    monkeypatch.setattr(discord_platform.discord.app_commands, "choices", _capture_choices)
+    monkeypatch.setattr(
+        discord_platform.discord.app_commands,
+        "Choice",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    adapter._register_slash_commands()
+
+    command = adapter._client.tree.commands["voice"]
+    choices = command._test_app_command_choices["mode"]
+    values = {choice.value for choice in choices}
+
+    assert "realtime" in values
+    assert "rt" in values
+
+
 # ------------------------------------------------------------------
 # Auto-registration from COMMAND_REGISTRY
 # ------------------------------------------------------------------

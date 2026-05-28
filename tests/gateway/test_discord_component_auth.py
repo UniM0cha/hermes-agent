@@ -13,6 +13,7 @@ behavior on missing role data so the parity cannot regress.
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -156,6 +157,34 @@ def test_exec_approval_view_role_default_is_empty_set():
     assert view.allowed_role_ids == set()
     assert view._check_auth(_interaction(11111)) is True
     assert view._check_auth(_interaction(99999)) is False
+
+
+@pytest.mark.asyncio
+async def test_exec_approval_resolution_removes_buttons(monkeypatch):
+    """Once a command approval is resolved, Discord should remove the buttons.
+
+    Passing the resolved view back to edit_message leaves disabled buttons
+    visible under the approval card.  The resolved prompt should keep the
+    footer, but remove the component row entirely with view=None.
+    """
+    view = ExecApprovalView(session_key="sess-1", allowed_user_ids=set())
+    response = SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock())
+    embed = SimpleNamespace(color=None, set_footer=lambda **_: None)
+    interaction = SimpleNamespace(
+        response=response,
+        message=SimpleNamespace(embeds=[embed]),
+        user=SimpleNamespace(id=11111, display_name="모카"),
+    )
+    monkeypatch.setattr(
+        "tools.approval.resolve_gateway_approval",
+        lambda session_key, choice: 1,
+    )
+
+    await view._resolve(interaction, "always", 5, "Approved permanently")
+
+    response.edit_message.assert_awaited_once()
+    assert response.edit_message.call_args.kwargs["embed"] is embed
+    assert response.edit_message.call_args.kwargs["view"] is None
 
 
 def test_slash_confirm_view_accepts_role_allowlist():

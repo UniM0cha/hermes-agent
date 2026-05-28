@@ -76,6 +76,55 @@ class CleanupCaptureAdapter(BasePlatformAdapter):
         return {"id": chat_id}
 
 
+class DiscordCleanupCaptureAdapter(CleanupCaptureAdapter):
+    """Discord-shaped adapter that records metadata-aware deletes."""
+
+    def __init__(self):
+        super().__init__(platform=Platform.DISCORD)
+
+    async def edit_message(
+        self, chat_id, message_id, content, *, finalize: bool = False, metadata=None
+    ) -> SendResult:
+        self.edits.append(
+            {
+                "chat_id": chat_id,
+                "message_id": str(message_id),
+                "content": content,
+                "metadata": metadata,
+            }
+        )
+        return SendResult(success=True, message_id=str(message_id))
+
+    async def delete_message(self, chat_id, message_id, metadata=None) -> bool:
+        self.deleted.append(
+            {
+                "chat_id": chat_id,
+                "message_id": str(message_id),
+                "metadata": metadata,
+            }
+        )
+        return True
+
+
+class SplitSendDiscordCleanupAdapter(DiscordCleanupCaptureAdapter):
+    """First progress send returns multiple message ids like Discord splits."""
+
+    async def send(self, chat_id, content, reply_to=None, metadata=None) -> SendResult:
+        self.sent.append(
+            {
+                "chat_id": chat_id,
+                "content": content,
+                "message_id": "m1",
+                "metadata": metadata,
+            }
+        )
+        return SendResult(
+            success=True,
+            message_id="m1",
+            raw_response={"message_ids": ["m1", "m2", "m3"]},
+        )
+
+
 class NoDeleteAdapter(CleanupCaptureAdapter):
     """Adapter that inherits the base no-op delete_message (used to prove
     the cleanup path skips adapters without deletion support)."""
@@ -154,7 +203,7 @@ def _make_runner(adapter):
     return runner
 
 
-def _install_fakes(monkeypatch, agent_cls, *, cleanup_on: bool):
+def _install_fakes(monkeypatch, agent_cls, *, cleanup_on: bool, config_data=None):
     """Wire up the module stubs every _run_agent test needs."""
     monkeypatch.setenv("HERMES_TOOL_PROGRESS_MODE", "all")
 
@@ -170,15 +219,19 @@ def _install_fakes(monkeypatch, agent_cls, *, cleanup_on: bool):
     gateway_run = importlib.import_module("gateway.run")
     monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"api_key": "fake"})
 
-    # Wire the per-platform cleanup_progress flag via the config loader the
-    # gateway actually reads (``_load_gateway_config`` returns user config).
-    cfg = {
-        "display": {
-            "platforms": {
-                "telegram": {"cleanup_progress": True},
+    # Wire cleanup_progress through the config loader the gateway actually reads.
+    if config_data is not None:
+        cfg = config_data
+    elif cleanup_on:
+        cfg = {
+            "display": {
+                "platforms": {
+                    "telegram": {"cleanup_progress": True},
+                }
             }
         }
-    } if cleanup_on else {}
+    else:
+        cfg = {}
     monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: cfg)
     return gateway_run
 
@@ -365,3 +418,118 @@ async def test_cleanup_chains_with_existing_callback(monkeypatch, tmp_path):
     # deletes at least one progress bubble.
     assert pre_existing_fired == [True]
     assert len(adapter.deleted) >= 1
+
+
+@pytest.mark.asyncio
+async def test_discord_cleanup_progress_deletes_temp_bubbles_when_global_cleanup_enabled(
+    monkeypatch, tmp_path
+):
+    """Global display.cleanup_progress should apply to Discord once it supports deletion."""
+    adapter = DiscordCleanupCaptureAdapter()
+    runner = _make_runner(adapter)
+    gateway_run = _install_fakes(
+        monkeypatch,
+        ProgressAgent,
+        cleanup_on=False,
+        config_data={"display": {"cleanup_progress": True}},
+    )
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
+
+    source = SessionSource(platform=Platform.DISCORD, chat_id="100", thread_id="200")
+    session_key = "agent:main:discord:group:100:200"
+
+    result = await runner._run_agent(
+        message="hello",
+        context_prompt="",
+        history=[],
+        source=source,
+        session_id="sess-discord-cleanup-global",
+        session_key=session_key,
+    )
+
+    assert result["final_response"] == "done"
+    cb = adapter.pop_post_delivery_callback(session_key)
+    assert callable(cb)
+    cb()
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if adapter.deleted:
+            break
+
+    assert adapter.deleted, f"deleted={adapter.deleted} sent={adapter.sent}"
+    assert all(item["chat_id"] == "100" for item in adapter.deleted)
+
+
+@pytest.mark.asyncio
+async def test_discord_cleanup_preserves_thread_metadata(monkeypatch, tmp_path):
+    adapter = DiscordCleanupCaptureAdapter()
+    runner = _make_runner(adapter)
+    gateway_run = _install_fakes(
+        monkeypatch,
+        ProgressAgent,
+        cleanup_on=False,
+        config_data={"display": {"cleanup_progress": True}},
+    )
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
+
+    source = SessionSource(platform=Platform.DISCORD, chat_id="100", thread_id="200")
+    session_key = "agent:main:discord:group:100:200"
+
+    result = await runner._run_agent(
+        message="hello",
+        context_prompt="",
+        history=[],
+        source=source,
+        session_id="sess-discord-cleanup-metadata",
+        session_key=session_key,
+    )
+
+    assert result["final_response"] == "done"
+    cb = adapter.pop_post_delivery_callback(session_key)
+    assert callable(cb)
+    cb()
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if adapter.deleted:
+            break
+
+    assert adapter.deleted
+    assert all(item["metadata"] == {"thread_id": "200"} for item in adapter.deleted)
+
+
+@pytest.mark.asyncio
+async def test_discord_cleanup_tracks_split_send_message_ids(monkeypatch, tmp_path):
+    adapter = SplitSendDiscordCleanupAdapter()
+    runner = _make_runner(adapter)
+    gateway_run = _install_fakes(
+        monkeypatch,
+        ProgressAgent,
+        cleanup_on=False,
+        config_data={"display": {"cleanup_progress": True}},
+    )
+    monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
+
+    source = SessionSource(platform=Platform.DISCORD, chat_id="100", thread_id="200")
+    session_key = "agent:main:discord:group:100:200"
+
+    result = await runner._run_agent(
+        message="hello",
+        context_prompt="",
+        history=[],
+        source=source,
+        session_id="sess-discord-cleanup-split",
+        session_key=session_key,
+    )
+
+    assert result["final_response"] == "done"
+    cb = adapter.pop_post_delivery_callback(session_key)
+    assert callable(cb)
+    cb()
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if len(adapter.deleted) >= 3:
+            break
+
+    deleted_ids = {item["message_id"] for item in adapter.deleted}
+    assert {"m1", "m2", "m3"}.issubset(deleted_ids)
+    assert all(item["metadata"] == {"thread_id": "200"} for item in adapter.deleted)

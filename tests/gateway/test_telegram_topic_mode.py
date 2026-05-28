@@ -16,6 +16,17 @@ from gateway.platforms.base import MessageEvent
 from gateway.session import SessionEntry, SessionSource, build_session_key
 
 
+@pytest.fixture(autouse=True)
+def _force_english_i18n(monkeypatch):
+    """Keep local display.language settings from changing English assertions."""
+    from agent.i18n import reset_language_cache
+
+    monkeypatch.setenv("HERMES_LANGUAGE", "en")
+    reset_language_cache()
+    yield
+    reset_language_cache()
+
+
 def _make_source(*, thread_id: str | None = None) -> SessionSource:
     return SessionSource(
         platform=Platform.TELEGRAM,
@@ -527,6 +538,44 @@ async def test_topic_root_command_lists_unlinked_sessions_for_restore(tmp_path, 
     assert "Send /topic old-unlinked inside a topic" in result
     assert "Already linked" not in result
     assert "other-user" not in result
+    runner._run_agent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_topic_root_command_lists_unlinked_sessions_in_korean(tmp_path, monkeypatch):
+    import gateway.run as gateway_run
+    from agent.i18n import reset_language_cache
+
+    monkeypatch.setenv("HERMES_LANGUAGE", "ko")
+    reset_language_cache()
+
+    session_db = SessionDB(db_path=tmp_path / "state.db")
+    session_db.enable_telegram_topic_mode(chat_id="208214988", user_id="208214988")
+    session_db.create_session(
+        session_id="old-unlinked",
+        source="telegram",
+        user_id="208214988",
+    )
+    session_db.set_session_title("old-unlinked", "옛 대화")
+    session_db.append_message("old-unlinked", "user", "첫 요청")
+    runner = _make_runner(session_db=session_db)
+    runner._run_agent = AsyncMock(
+        side_effect=AssertionError("root /topic status must not enter the agent loop")
+    )
+
+    monkeypatch.setattr(
+        gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"api_key": "***"}
+    )
+
+    result = await runner._handle_message(_make_event("/topic"))
+    assert result is not None
+
+    assert "Telegram 다중 세션 토픽이 활성화되었습니다" in result
+    assert "새 Hermes 채팅을 만들려면" in result
+    assert "아직 연결되지 않은 이전 세션" in result
+    assert "옛 대화" in result
+    assert "예시: 토픽 안에서 /topic old-unlinked를 보내세요" in result
+    assert "Previous unlinked sessions" not in result
     runner._run_agent.assert_not_called()
 
 

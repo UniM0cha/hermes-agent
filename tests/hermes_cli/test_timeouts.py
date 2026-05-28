@@ -306,3 +306,28 @@ def test_explicit_non_stream_stale_timeout_is_honored_for_local_endpoints(monkey
     )
 
     assert agent._compute_non_stream_stale_timeout([]) == 300.0
+
+
+def test_explicit_non_stream_stale_timeout_is_not_scaled_for_large_context(monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    _write_config(tmp_path, """\
+        providers:
+          openai-codex:
+            stale_timeout_seconds: 30
+        """)
+
+    from run_agent import AIAgent
+    agent = AIAgent(
+        model="gpt-5.5",
+        provider="openai-codex",
+        api_key="sk-dummy",
+        base_url="https://chatgpt.com/backend-api/codex",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        platform="cli",
+    )
+
+    huge_messages = [{"role": "user", "content": "x" * 500_000}]
+    assert agent._compute_non_stream_stale_timeout(huge_messages) == 30.0

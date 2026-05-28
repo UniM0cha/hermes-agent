@@ -159,6 +159,112 @@ def get_tool_emoji(tool_name: str, default: str = "⚡") -> str:
     return default
 
 
+def _display_t(key: str, **kwargs) -> str:
+    """Translate display text, falling back safely during early imports/tests."""
+    try:
+        from agent.i18n import t
+        return t(key, **kwargs)
+    except Exception:
+        return key
+
+
+def _display_language() -> str:
+    try:
+        from agent.i18n import get_language
+        return get_language()
+    except Exception:
+        return "en"
+
+
+_TOOL_DISPLAY_KEYS = {
+    "browser_back", "browser_cdp", "browser_click", "browser_console",
+    "browser_dialog", "browser_get_images", "browser_navigate", "browser_press",
+    "browser_scroll", "browser_snapshot", "browser_type", "browser_vision",
+    "clarify", "computer_use", "cronjob", "delegate_task", "discord",
+    "discord_admin", "execute_code", "feishu_doc_read",
+    "feishu_drive_add_comment", "feishu_drive_list_comment_replies",
+    "feishu_drive_list_comments", "feishu_drive_reply_comment",
+    "ha_call_service", "ha_get_state", "ha_list_entities", "ha_list_services",
+    "image_generate", "kanban_block", "kanban_comment", "kanban_complete",
+    "kanban_create", "kanban_heartbeat", "kanban_link", "kanban_list",
+    "kanban_show", "kanban_unblock", "memory", "mixture_of_agents", "patch",
+    "process", "read_file", "rl_check_status", "rl_edit_config",
+    "rl_get_current_config", "rl_get_results", "rl_list_environments",
+    "rl_list_runs", "rl_select_environment", "rl_start_training",
+    "rl_stop_training", "rl_test_inference", "search_files", "send_message",
+    "session_search", "skill_manage", "skill_view", "skills_list", "terminal",
+    "text_to_speech", "todo", "video_analyze", "vision_analyze", "web_extract",
+    "web_search", "write_file", "yb_query_group_info", "yb_query_group_members",
+    "yb_search_sticker", "yb_send_dm", "yb_send_sticker",
+}
+
+
+_TOOL_PREFIX_KEYS = {
+    "browser_": "browser_generic",
+    "feishu_": "feishu_generic",
+    "ha_": "homeassistant_generic",
+    "kanban_": "kanban_generic",
+    "rl_": "rl_generic",
+    "yb_": "yuanbao_generic",
+}
+
+
+def get_tool_display_name(tool_name: str) -> str:
+    """Return a localized user-facing label for a tool progress line."""
+    if tool_name in _TOOL_DISPLAY_KEYS:
+        label = _display_t(f"tool_progress.tools.{tool_name}")
+        if label and not label.startswith("tool_progress."):
+            return label
+
+    for prefix, key in _TOOL_PREFIX_KEYS.items():
+        if tool_name.startswith(prefix):
+            label = _display_t(f"tool_progress.tools.{key}")
+            if label and not label.startswith("tool_progress."):
+                return label
+
+    if _display_language() == "ko":
+        return _display_t("tool_progress.tools.generic")
+    return tool_name
+
+
+_ARG_DISPLAY_KEYS = {
+    "action", "category", "code", "command", "content", "deliver", "file_path",
+    "goal", "message", "model", "name", "path", "pattern", "prompt", "query",
+    "question", "ref", "schedule", "session_id", "target", "text", "timeout",
+    "url", "urls", "user_prompt",
+}
+
+
+def get_tool_arg_display_name(arg_name: str, index: int | None = None) -> str:
+    """Return a localized label for a tool argument key in verbose progress."""
+    if arg_name in _ARG_DISPLAY_KEYS:
+        label = _display_t(f"tool_progress.args.{arg_name}")
+        if label and not label.startswith("tool_progress."):
+            return label
+    if _display_language() == "ko":
+        return _display_t("tool_progress.args.generic", index=index or 0)
+    return arg_name
+
+
+def format_tool_args_for_display(args: dict, max_len: int | None = None) -> str:
+    """Format verbose tool arguments with localized keys where possible."""
+    import json
+
+    if not isinstance(args, dict):
+        rendered = json.dumps(args, ensure_ascii=False, default=str)
+    elif _display_language() == "en":
+        rendered = json.dumps(args, ensure_ascii=False, default=str)
+    else:
+        localized_args = {}
+        for index, (key, value) in enumerate(args.items(), start=1):
+            localized_args[get_tool_arg_display_name(str(key), index=index)] = value
+        rendered = json.dumps(localized_args, ensure_ascii=False, default=str)
+
+    if max_len and max_len > 0 and len(rendered) > max_len:
+        return rendered[:max_len - 3] + "..."
+    return rendered
+
+
 # =========================================================================
 # Tool preview (one-line summary of a tool call's primary argument)
 # =========================================================================
@@ -209,28 +315,32 @@ def build_tool_preview(tool_name: str, args: dict, max_len: int | None = None) -
         todos_arg = args.get("todos")
         merge = args.get("merge", False)
         if todos_arg is None:
-            return "reading task list"
+            return _display_t("tool_progress.preview.todo_read")
         elif merge:
-            return f"updating {len(todos_arg)} task(s)"
+            return _display_t("tool_progress.preview.todo_update", count=len(todos_arg))
         else:
-            return f"planning {len(todos_arg)} task(s)"
+            return _display_t("tool_progress.preview.todo_plan", count=len(todos_arg))
 
     if tool_name == "session_search":
         query = _oneline(args.get("query", ""))
-        return f"recall: \"{query[:25]}{'...' if len(query) > 25 else ''}\""
+        preview_query = f"{query[:25]}{'...' if len(query) > 25 else ''}"
+        return _display_t("tool_progress.preview.session_search", query=preview_query)
 
     if tool_name == "memory":
         action = args.get("action", "")
-        target = args.get("target", "")
+        target_raw = args.get("target", "")
+        target_key = target_raw if target_raw in {"memory", "user"} else "generic"
+        target = _display_t(f"tool_progress.memory_targets.{target_key}")
         if action == "add":
             content = _oneline(args.get("content", ""))
-            return f"+{target}: \"{content[:25]}{'...' if len(content) > 25 else ''}\""
+            preview_content = f"{content[:25]}{'...' if len(content) > 25 else ''}"
+            return _display_t("tool_progress.preview.memory_add", target=target, content=preview_content)
         elif action == "replace":
-            old = _oneline(args.get("old_text") or "") or "<missing old_text>"
-            return f"~{target}: \"{old[:20]}\""
+            old = _oneline(args.get("old_text") or "") or _display_t("tool_progress.preview.missing_old_text")
+            return _display_t("tool_progress.preview.memory_replace", target=target, old=old[:20])
         elif action == "remove":
-            old = _oneline(args.get("old_text") or "") or "<missing old_text>"
-            return f"-{target}: \"{old[:20]}\""
+            old = _oneline(args.get("old_text") or "") or _display_t("tool_progress.preview.missing_old_text")
+            return _display_t("tool_progress.preview.memory_remove", target=target, old=old[:20])
         return action
 
     if tool_name == "send_message":
@@ -238,7 +348,22 @@ def build_tool_preview(tool_name: str, args: dict, max_len: int | None = None) -
         msg = _oneline(args.get("message", ""))
         if len(msg) > 20:
             msg = msg[:17] + "..."
-        return f"to {target}: \"{msg}\""
+        return _display_t("tool_progress.preview.send_message", target=target, message=msg)
+
+    if tool_name.startswith("rl_"):
+        rl_previews = {
+            "rl_list_environments": _display_t("tool_progress.preview.rl_list_environments"),
+            "rl_select_environment": args.get("name", ""),
+            "rl_get_current_config": _display_t("tool_progress.preview.rl_get_current_config"),
+            "rl_edit_config": f"{args.get('field', '')}={args.get('value', '')}",
+            "rl_start_training": _display_t("tool_progress.preview.rl_start_training"),
+            "rl_check_status": args.get("run_id", "")[:16],
+            "rl_stop_training": _display_t("tool_progress.preview.rl_stop_training", run_id=args.get("run_id", "")[:16]),
+            "rl_get_results": args.get("run_id", "")[:16],
+            "rl_list_runs": _display_t("tool_progress.preview.rl_list_runs"),
+            "rl_test_inference": _display_t("tool_progress.preview.rl_test_inference", steps=args.get("num_steps", 3)),
+        }
+        return rl_previews.get(tool_name)
 
     key = primary_args.get(tool_name)
     if not key:

@@ -10,6 +10,17 @@ from gateway.platforms.base import MessageEvent
 from gateway.session import SessionEntry, SessionSource, build_session_key
 
 
+@pytest.fixture(autouse=True)
+def _force_english_i18n(monkeypatch):
+    """Keep user-local display.language settings from changing assertions."""
+    from agent.i18n import reset_language_cache
+
+    monkeypatch.setenv("HERMES_LANGUAGE", "en")
+    reset_language_cache()
+    yield
+    reset_language_cache()
+
+
 def _make_source() -> SessionSource:
     return SessionSource(
         platform=Platform.TELEGRAM,

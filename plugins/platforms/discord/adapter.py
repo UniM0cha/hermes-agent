@@ -65,6 +65,7 @@ from gateway.platforms.base import (
     cache_document_from_bytes,
     SUPPORTED_DOCUMENT_TYPES,
 )
+from agent.i18n import t
 from tools.url_safety import is_safe_url
 
 
@@ -211,6 +212,12 @@ class VoiceReceiver:
         # Debug logging counter (instance-level to avoid cross-instance races)
         self._packet_debug_count = 0
 
+        # Optional realtime streaming tap.  When set, decoded PCM is delivered
+        # immediately before utterance buffering/STT.  Realtime mode can disable
+        # utterance buffering to avoid duplicate local STT processing.
+        self._pcm_stream_callback: Optional[Callable[[int, int, bytes], None]] = None
+        self._buffer_utterances = True
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -246,6 +253,24 @@ class VoiceReceiver:
 
     def resume(self):
         self._paused = False
+
+    def set_pcm_stream_callback(
+        self,
+        callback: Optional[Callable[[int, int, bytes], None]],
+        *,
+        buffer_utterances: bool = True,
+    ) -> None:
+        """Install an optional decoded-PCM streaming callback.
+
+        ``callback`` receives ``(ssrc, user_id, pcm_48k_stereo)``.  When
+        ``buffer_utterances`` is False, decoded audio is not appended to the
+        normal silence-detected STT buffers.
+        """
+        with self._lock:
+            self._pcm_stream_callback = callback
+            self._buffer_utterances = buffer_utterances
+            if callback is None:
+                self._buffer_utterances = True
 
     # ------------------------------------------------------------------
     # SSRC -> user_id mapping via SPEAKING opcode hook
@@ -419,8 +444,10 @@ class VoiceReceiver:
             if ssrc not in self._decoders:
                 self._decoders[ssrc] = discord.opus.Decoder()
             pcm = self._decoders[ssrc].decode(decrypted)
+            self._emit_pcm_stream_callback(ssrc, pcm)
             with self._lock:
-                self._buffers[ssrc].extend(pcm)
+                if self._buffer_utterances:
+                    self._buffers[ssrc].extend(pcm)
                 self._last_packet_time[ssrc] = time.monotonic()
         except Exception as e:
             with self._lock:
@@ -431,6 +458,27 @@ class VoiceReceiver:
                 e,
             )
             return
+
+    def _handle_decoded_pcm(self, ssrc: int, pcm: bytes) -> None:
+        """Route decoded PCM to realtime callback and/or utterance buffer."""
+        self._emit_pcm_stream_callback(ssrc, pcm)
+        with self._lock:
+            if self._buffer_utterances:
+                self._buffers[ssrc].extend(pcm)
+            self._last_packet_time[ssrc] = time.monotonic()
+
+    def _emit_pcm_stream_callback(self, ssrc: int, pcm: bytes) -> None:
+        """Deliver decoded PCM to the optional realtime stream callback."""
+        with self._lock:
+            user_id = self._ssrc_to_user.get(ssrc, 0)
+            callback = self._pcm_stream_callback
+        if not user_id:
+            user_id = self._infer_user_for_ssrc(ssrc)
+        if callback and user_id:
+            try:
+                callback(ssrc, int(user_id), pcm)
+            except Exception:
+                logger.warning("PCM stream callback failed for SSRC %s", ssrc, exc_info=True)
 
     # ------------------------------------------------------------------
     # Silence detection
@@ -600,6 +648,7 @@ class DiscordAdapter(BasePlatformAdapter):
         self._voice_listen_tasks: Dict[int, asyncio.Task] = {}  # guild_id -> listen loop
         self._voice_input_callback: Optional[Callable] = None  # set by run.py
         self._on_voice_disconnect: Optional[Callable] = None  # set by run.py
+        self._realtime_bridges: Dict[int, Any] = {}  # guild_id -> DiscordRealtimeBridge
         # Track threads where the bot has participated so follow-up messages
         # in those threads don't require @mention.  Persisted to disk so the
         # set survives gateway restarts.
@@ -804,7 +853,7 @@ class DiscordAdapter(BasePlatformAdapter):
                         is_dm=_is_dm,
                     ):
                         return
-                
+
                 # Multi-agent filtering: if the message mentions specific bots
                 # but NOT this bot, the sender is talking to another agent —
                 # stay silent.  Messages with no bot mentions (general chat)
@@ -985,18 +1034,24 @@ class DiscordAdapter(BasePlatformAdapter):
         if retry_after_until > now:
             remaining = max(1, int(retry_after_until - now))
             return f"Discord asked us to wait before syncing slash commands; retry in {remaining}s"
-        if entry.get("fingerprint") == fingerprint and entry.get("last_success_at"):
+        last_success_at = float(entry.get("last_success_at") or 0)
+        last_attempt_at = float(entry.get("last_attempt_at") or 0)
+        if entry.get("fingerprint") == fingerprint and last_success_at and last_success_at >= last_attempt_at:
             return "same slash-command fingerprint already synced"
         return None
 
     def _record_command_sync_attempt(self, app_id: Any, fingerprint: str) -> None:
         state = self._read_command_sync_state()
-        state[self._command_sync_state_key(app_id)] = {
-            **(
-                state.get(self._command_sync_state_key(app_id))
-                if isinstance(state.get(self._command_sync_state_key(app_id)), dict)
-                else {}
-            ),
+        key = self._command_sync_state_key(app_id)
+        previous = state.get(key) if isinstance(state.get(key), dict) else {}
+        if previous.get("fingerprint") != fingerprint:
+            previous = {
+                k: v
+                for k, v in previous.items()
+                if k not in {"last_success_at", "summary"}
+            }
+        state[key] = {
+            **previous,
             "fingerprint": fingerprint,
             "last_attempt_at": time.time(),
         }
@@ -1402,6 +1457,30 @@ class DiscordAdapter(BasePlatformAdapter):
             elif outcome == ProcessingOutcome.FAILURE:
                 await self._add_reaction(message, "❌")
 
+    def _message_channel_id(
+        self,
+        chat_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Return the Discord channel/thread id that owns a message lifecycle call."""
+        if metadata and metadata.get("thread_id"):
+            return str(metadata["thread_id"])
+        return str(chat_id)
+
+    async def _resolve_channel_for_message_lifecycle(
+        self,
+        chat_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Resolve the channel/thread used for edit/delete of a sent message."""
+        if not self._client:
+            return None
+        channel_id = self._message_channel_id(chat_id, metadata)
+        channel = self._client.get_channel(int(channel_id))
+        if not channel:
+            channel = await self._client.fetch_channel(int(channel_id))
+        return channel
+
     async def send(
         self,
         chat_id: str,
@@ -1637,14 +1716,16 @@ class DiscordAdapter(BasePlatformAdapter):
         content: str,
         *,
         finalize: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Edit a previously sent Discord message."""
         if not self._client:
             return SendResult(success=False, error="Not connected")
         try:
-            channel = self._client.get_channel(int(chat_id))
+            channel = await self._resolve_channel_for_message_lifecycle(chat_id, metadata)
+            channel_id = self._message_channel_id(chat_id, metadata)
             if not channel:
-                channel = await self._client.fetch_channel(int(chat_id))
+                return SendResult(success=False, error=f"Channel {channel_id} not found")
             msg = await channel.fetch_message(int(message_id))
             formatted = self.format_message(content)
             if len(formatted) > self.MAX_MESSAGE_LENGTH:
@@ -1654,6 +1735,26 @@ class DiscordAdapter(BasePlatformAdapter):
         except Exception as e:  # pragma: no cover - defensive logging
             logger.error("[%s] Failed to edit Discord message %s: %s", self.name, message_id, e, exc_info=True)
             return SendResult(success=False, error=str(e))
+
+    async def delete_message(
+        self,
+        chat_id: str,
+        message_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Delete a previously sent Discord message, best-effort."""
+        if not self._client:
+            return False
+        try:
+            channel = await self._resolve_channel_for_message_lifecycle(chat_id, metadata)
+            if not channel:
+                return False
+            msg = await channel.fetch_message(int(message_id))
+            await msg.delete()
+            return True
+        except Exception as e:
+            logger.debug("[%s] Failed to delete Discord message %s: %s", self.name, message_id, e)
+            return False
 
     async def _send_file_attachment(
         self,
@@ -1962,6 +2063,7 @@ class DiscordAdapter(BasePlatformAdapter):
     async def leave_voice_channel(self, guild_id: int) -> None:
         """Disconnect from the voice channel in a guild."""
         async with self._voice_locks.setdefault(guild_id, asyncio.Lock()):
+            await self.stop_realtime_voice(guild_id)
             # Stop voice receiver first
             receiver = self._voice_receivers.pop(guild_id, None)
             if receiver:
@@ -1978,6 +2080,71 @@ class DiscordAdapter(BasePlatformAdapter):
                 task.cancel()
             self._voice_text_channels.pop(guild_id, None)
             self._voice_sources.pop(guild_id, None)
+
+    async def start_realtime_voice(
+        self,
+        guild_id: int,
+        controller_user_id: str,
+        text_channel_id: int,
+        source_data: dict,
+        runner,
+    ) -> tuple[bool, str]:
+        """Start OpenAI Realtime bridge for an already joined voice channel."""
+        bridges = getattr(self, "_realtime_bridges", None)
+        if not isinstance(bridges, dict):
+            bridges = {}
+            self._realtime_bridges = bridges
+        existing = bridges.pop(guild_id, None)
+        if existing is not None:
+            await existing.stop("restarting")
+
+        vc = self._voice_clients.get(guild_id)
+        if not vc or not vc.is_connected():
+            return False, "Bot is not connected to a Discord voice channel."
+        receiver = self._voice_receivers.get(guild_id)
+        if receiver is None:
+            return False, "Discord voice receiver is not active; reconnect the voice channel and try again."
+        text_channel = self._client.get_channel(text_channel_id) if self._client else None
+        if text_channel is None:
+            return False, "Could not find the bound Discord text channel."
+
+        try:
+            from hermes_cli.config import load_config
+            cfg = load_config().get("discord", {}).get("realtime", {}) or {}
+        except Exception:
+            cfg = {}
+        try:
+            from gateway.voice.discord_realtime_bridge import DiscordRealtimeBridge
+            bridge = DiscordRealtimeBridge(
+                guild_id=guild_id,
+                controller_user_id=controller_user_id,
+                voice_client=vc,
+                receiver=receiver,
+                text_channel=text_channel,
+                source_data=source_data,
+                runner=runner,
+                config=cfg,
+            )
+            ok, message = await bridge.start()
+        except Exception as exc:
+            logger.warning("Failed to start realtime voice bridge: %s", exc, exc_info=True)
+            return False, f"Failed to start Realtime voice: {exc}"
+        if ok:
+            bridges[guild_id] = bridge
+        return ok, message
+
+    async def stop_realtime_voice(self, guild_id: int) -> None:
+        """Stop the realtime bridge for a guild if active."""
+        bridges = getattr(self, "_realtime_bridges", None)
+        if not isinstance(bridges, dict):
+            return
+        bridge = bridges.pop(guild_id, None)
+        if bridge is not None:
+            await bridge.stop("stopped")
+
+    def is_realtime_voice(self, guild_id: int) -> bool:
+        bridges = getattr(self, "_realtime_bridges", None)
+        return isinstance(bridges, dict) and guild_id in bridges
 
     # Maximum seconds to wait for voice playback before giving up
     PLAYBACK_TIMEOUT = 120
@@ -2170,6 +2337,9 @@ class DiscordAdapter(BasePlatformAdapter):
                             vc._connection.send_packet(b'\xf8\xff\xfe')
                     except Exception:
                         pass
+
+                if self.is_realtime_voice(guild_id):
+                    continue
 
                 completed = receiver.check_silence()
                 # Voice inputs always originate from a specific guild
@@ -2967,96 +3137,104 @@ class DiscordAdapter(BasePlatformAdapter):
 
         tree = self._client.tree
 
-        @tree.command(name="new", description="Start a new conversation")
+        from hermes_cli.commands import localized_command_description as _cmd_desc
+
+        def _desc(command_name: str, fallback: str | None = None) -> str:
+            return _cmd_desc(command_name, fallback=fallback)[:100]
+
+        @tree.command(name="new", description=_desc("new", "Start a new conversation"))
         async def slash_new(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/reset", "New conversation started~")
 
-        @tree.command(name="reset", description="Reset your Hermes session")
+        @tree.command(name="reset", description=_desc("reset", "Reset your Hermes session"))
         async def slash_reset(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/reset", "Session reset~")
 
-        @tree.command(name="model", description="Show or change the model")
+        @tree.command(name="model", description=_desc("model", "Show or change the model"))
         @discord.app_commands.describe(name="Model name (e.g. anthropic/claude-sonnet-4). Leave empty to see current.")
         async def slash_model(interaction: discord.Interaction, name: str = ""):
             await self._run_simple_slash(interaction, f"/model {name}".strip())
 
-        @tree.command(name="reasoning", description="Show or change reasoning effort")
+        @tree.command(name="reasoning", description=_desc("reasoning", "Show or change reasoning effort"))
         @discord.app_commands.describe(effort="Reasoning effort: none, minimal, low, medium, high, or xhigh.")
         async def slash_reasoning(interaction: discord.Interaction, effort: str = ""):
             await self._run_simple_slash(interaction, f"/reasoning {effort}".strip())
 
-        @tree.command(name="personality", description="Set a personality")
+        @tree.command(name="personality", description=_desc("personality", "Set a personality"))
         @discord.app_commands.describe(name="Personality name. Leave empty to list available.")
         async def slash_personality(interaction: discord.Interaction, name: str = ""):
             await self._run_simple_slash(interaction, f"/personality {name}".strip())
 
-        @tree.command(name="retry", description="Retry your last message")
+        @tree.command(name="retry", description=_desc("retry", "Retry your last message"))
         async def slash_retry(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/retry", "Retrying~")
 
-        @tree.command(name="undo", description="Remove the last exchange")
+        @tree.command(name="undo", description=_desc("undo", "Remove the last exchange"))
         async def slash_undo(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/undo")
 
-        @tree.command(name="status", description="Show Hermes session status")
+        @tree.command(name="status", description=_desc("status", "Show Hermes session status"))
         async def slash_status(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/status", "Status sent~")
 
-        @tree.command(name="sethome", description="Set this chat as the home channel")
+        @tree.command(name="sethome", description=_desc("sethome", "Set this chat as the home channel"))
         async def slash_sethome(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/sethome")
 
-        @tree.command(name="stop", description="Stop the running Hermes agent")
+        @tree.command(name="stop", description=_desc("stop", "Stop the running Hermes agent"))
         async def slash_stop(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/stop", "Stop requested~")
 
-        @tree.command(name="steer", description="Inject a message after the next tool call (no interrupt)")
+        @tree.command(name="steer", description=_desc("steer", "Inject a message after the next tool call (no interrupt)"))
         @discord.app_commands.describe(prompt="Text to inject into the agent's next tool result")
         async def slash_steer(interaction: discord.Interaction, prompt: str):
             await self._run_simple_slash(interaction, f"/steer {prompt}".strip())
 
-        @tree.command(name="compress", description="Compress conversation context")
+        @tree.command(name="compress", description=_desc("compress", "Compress conversation context"))
         async def slash_compress(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/compress")
 
-        @tree.command(name="title", description="Set or show the session title")
+        @tree.command(name="title", description=_desc("title", "Set or show the session title"))
         @discord.app_commands.describe(name="Session title. Leave empty to show current.")
         async def slash_title(interaction: discord.Interaction, name: str = ""):
             await self._run_simple_slash(interaction, f"/title {name}".strip())
 
-        @tree.command(name="resume", description="Resume a previously-named session")
+        @tree.command(name="resume", description=_desc("resume", "Resume a previously-named session"))
         @discord.app_commands.describe(name="Session name to resume. Leave empty to list sessions.")
         async def slash_resume(interaction: discord.Interaction, name: str = ""):
             await self._run_simple_slash(interaction, f"/resume {name}".strip())
 
-        @tree.command(name="usage", description="Show token usage for this session")
+        @tree.command(name="usage", description=_desc("usage", "Show token usage for this session"))
         async def slash_usage(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/usage")
 
-        @tree.command(name="help", description="Show available commands")
+        @tree.command(name="help", description=_desc("help", "Show available commands"))
         async def slash_help(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/help")
 
-        @tree.command(name="insights", description="Show usage insights and analytics")
+        @tree.command(name="insights", description=_desc("insights", "Show usage insights and analytics"))
         @discord.app_commands.describe(days="Number of days to analyze (default: 7)")
         async def slash_insights(interaction: discord.Interaction, days: int = 7):
             await self._run_simple_slash(interaction, f"/insights {days}")
 
-        @tree.command(name="reload-mcp", description="Reload MCP servers from config")
+        @tree.command(name="reload-mcp", description=_desc("reload-mcp", "Reload MCP servers from config"))
         async def slash_reload_mcp(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/reload-mcp")
 
-        @tree.command(name="reload-skills", description="Re-scan ~/.hermes/skills/ for new or removed skills")
+        @tree.command(name="reload-skills", description=_desc("reload-skills", "Re-scan ~/.hermes/skills/ for new or removed skills"))
         async def slash_reload_skills(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/reload-skills")
 
-        @tree.command(name="voice", description="Toggle voice reply mode")
-        @discord.app_commands.describe(mode="Voice mode: join, channel, leave, on, tts, off, or status")
+        @tree.command(name="voice", description=_desc("voice", "Toggle voice reply mode"))
+        @discord.app_commands.describe(mode="Voice mode: realtime, join, channel, leave, on, tts, off, or status")
         @discord.app_commands.choices(mode=[
             # `join` and `channel` both route to _handle_voice_channel_join in
             # gateway/run.py — expose both in the slash UI so autocomplete
             # matches what the docs advertise and what the runner accepts when
-            # the command is typed as plain text.
+            # the command is typed as plain text. `realtime`/`rt` start the
+            # OpenAI Realtime bridge instead of the local STT/TTS path.
+            discord.app_commands.Choice(name="realtime — join voice channel with OpenAI Realtime", value="realtime"),
+            discord.app_commands.Choice(name="rt — realtime voice alias", value="rt"),
             discord.app_commands.Choice(name="join — join your voice channel", value="join"),
             discord.app_commands.Choice(name="channel — join your voice channel (alias)", value="channel"),
             discord.app_commands.Choice(name="leave — leave voice channel", value="leave"),
@@ -3068,25 +3246,25 @@ class DiscordAdapter(BasePlatformAdapter):
         async def slash_voice(interaction: discord.Interaction, mode: str = ""):
             await self._run_simple_slash(interaction, f"/voice {mode}".strip())
 
-        @tree.command(name="update", description="Update Hermes Agent to the latest version")
+        @tree.command(name="update", description=_desc("update", "Update Hermes Agent to the latest version"))
         async def slash_update(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/update", "Update initiated~")
 
-        @tree.command(name="restart", description="Gracefully restart the Hermes gateway")
+        @tree.command(name="restart", description=_desc("restart", "Gracefully restart the Hermes gateway"))
         async def slash_restart(interaction: discord.Interaction):
             await self._run_simple_slash(interaction, "/restart", "Restart requested~")
 
-        @tree.command(name="approve", description="Approve a pending dangerous command")
+        @tree.command(name="approve", description=_desc("approve", "Approve a pending dangerous command"))
         @discord.app_commands.describe(scope="Optional: 'all', 'session', 'always', 'all session', 'all always'")
         async def slash_approve(interaction: discord.Interaction, scope: str = ""):
             await self._run_simple_slash(interaction, f"/approve {scope}".strip())
 
-        @tree.command(name="deny", description="Deny a pending dangerous command")
+        @tree.command(name="deny", description=_desc("deny", "Deny a pending dangerous command"))
         @discord.app_commands.describe(scope="Optional: 'all' to deny all pending commands")
         async def slash_deny(interaction: discord.Interaction, scope: str = ""):
             await self._run_simple_slash(interaction, f"/deny {scope}".strip())
 
-        @tree.command(name="thread", description="Create a new thread and start a Hermes session in it")
+        @tree.command(name="thread", description=_desc("thread", "Create a new thread and start a Hermes session in it"))
         @discord.app_commands.describe(
             name="Thread name",
             message="Optional first message to send to Hermes in the thread",
@@ -3102,12 +3280,12 @@ class DiscordAdapter(BasePlatformAdapter):
             # so a rejected invoker can receive an ephemeral rejection.
             await self._handle_thread_create_slash(interaction, name, message, auto_archive_duration)
 
-        @tree.command(name="queue", description="Queue a prompt for the next turn (doesn't interrupt)")
+        @tree.command(name="queue", description=_desc("queue", "Queue a prompt for the next turn (doesn't interrupt)"))
         @discord.app_commands.describe(prompt="The prompt to queue")
         async def slash_queue(interaction: discord.Interaction, prompt: str):
             await self._run_simple_slash(interaction, f"/queue {prompt}", "Queued for the next turn.")
 
-        @tree.command(name="background", description="Run a prompt in the background")
+        @tree.command(name="background", description=_desc("background", "Run a prompt in the background"))
         @discord.app_commands.describe(prompt="The prompt to run in the background")
         async def slash_background(interaction: discord.Interaction, prompt: str):
             await self._run_simple_slash(interaction, f"/background {prompt}", "Background task started~")
@@ -3119,7 +3297,7 @@ class DiscordAdapter(BasePlatformAdapter):
         def _build_auto_slash_command(_name: str, _description: str, _args_hint: str = ""):
             """Build a discord.app_commands.Command that proxies to _run_simple_slash."""
             discord_name = _name.lower()[:32]
-            desc = (_description or f"Run /{_name}")[:100]
+            desc = (_description or _desc(_name, f"Run /{_name}"))[:100]
             has_args = bool(_args_hint)
 
             if has_args:
@@ -3168,7 +3346,7 @@ class DiscordAdapter(BasePlatformAdapter):
                     continue
                 auto_cmd = _build_auto_slash_command(
                     cmd_def.name,
-                    cmd_def.description,
+                    _desc(cmd_def.name, cmd_def.description),
                     cmd_def.args_hint,
                 )
                 try:
@@ -3386,9 +3564,11 @@ class DiscordAdapter(BasePlatformAdapter):
                     interaction, f"{cmd_key} {args}".strip()
                 )
 
+            from hermes_cli.commands import localized_command_description as _cmd_desc
+
             cmd = discord.app_commands.Command(
                 name="skill",
-                description="Run a Hermes skill",
+                description=_cmd_desc("skill", fallback="Run a Hermes skill")[:100],
                 callback=_skill_handler,
             )
             tree.add_command(cmd)
@@ -3866,6 +4046,43 @@ class DiscordAdapter(BasePlatformAdapter):
         except Exception:
             return None
 
+    async def rename_thread(
+        self,
+        *,
+        thread_id: str | int,
+        name: str,
+        reason: str | None = None,
+    ) -> None:
+        """Rename an existing Discord thread by ID."""
+        if not self._client or not DISCORD_AVAILABLE or discord is None:
+            return
+
+        try:
+            resolved_thread_id = int(thread_id)
+        except (TypeError, ValueError):
+            return
+
+        thread = self._client.get_channel(resolved_thread_id)
+        if thread is None:
+            try:
+                thread = await self._client.fetch_channel(resolved_thread_id)
+            except Exception:
+                return
+        thread_cls = getattr(discord, "Thread", None)
+        if thread is None or (thread_cls is not None and not isinstance(thread, thread_cls)):
+            return
+
+        if reason:
+            await thread.edit(name=name, reason=reason)
+        else:
+            await thread.edit(name=name)
+        logger.info(
+            "[%s] Renamed Discord thread %s -> '%s'",
+            self.name,
+            thread_id,
+            name,
+        )
+
     async def _create_thread(
         self,
         interaction: discord.Interaction,
@@ -4088,11 +4305,11 @@ class DiscordAdapter(BasePlatformAdapter):
             max_desc = 4088
             cmd_display = command if len(command) <= max_desc else command[: max_desc - 3] + "..."
             embed = discord.Embed(
-                title="⚠️ Command Approval Required",
+                title=t("discord.command_approval_title"),
                 description=f"```\n{cmd_display}\n```",
                 color=discord.Color.orange(),
             )
-            embed.add_field(name="Reason", value=description, inline=False)
+            embed.add_field(name=t("discord.reason_field"), value=description, inline=False)
 
             view = ExecApprovalView(
                 session_key=session_key,
@@ -4579,14 +4796,16 @@ class DiscordAdapter(BasePlatformAdapter):
                 if self._client.user not in message.mentions and not mention_prefix:
                     return
         # Auto-thread: when enabled, automatically create a thread for every
-        # @mention in a text channel so each conversation is isolated (like Slack).
-        # Messages already inside threads or DMs are unaffected.
-        # no_thread_channels: channels where bot responds directly without thread.
+        # handled message in a text channel so each conversation is isolated
+        # (like Slack).  Free-response channels only relax the @mention
+        # requirement; they should still auto-thread unless explicitly listed
+        # in no_thread_channels.  Messages already inside threads or DMs are
+        # unaffected.
         auto_threaded_channel = None
         if not is_thread and not isinstance(message.channel, discord.DMChannel):
             no_thread_channels_raw = os.getenv("DISCORD_NO_THREAD_CHANNELS", "")
             no_thread_channels = {ch.strip() for ch in no_thread_channels_raw.split(",") if ch.strip()}
-            skip_thread = bool(channel_ids & no_thread_channels) or is_free_channel
+            skip_thread = bool(channel_ids & no_thread_channels)
             auto_thread = os.getenv("DISCORD_AUTO_THREAD", "true").lower() in {"true", "1", "yes"}
             is_reply_message = getattr(message, "type", None) == discord.MessageType.reply
             if auto_thread and not skip_thread and not is_voice_linked_channel and not is_reply_message:
@@ -4602,6 +4821,11 @@ class DiscordAdapter(BasePlatformAdapter):
 
         # Determine message type
         msg_type = MessageType.TEXT
+        # Discord native voice messages arrive as audio attachments plus the
+        # MessageFlags.voice bit.  Plain uploaded audio files are also audio/*,
+        # so check the message-level flag before falling back to AUDIO.
+        voice_flag = getattr(getattr(message, "flags", None), "voice", False)
+        is_native_voice_message = voice_flag is True
         if normalized_content.startswith("/"):
             msg_type = MessageType.COMMAND
         elif all_attachments:
@@ -4614,7 +4838,7 @@ class DiscordAdapter(BasePlatformAdapter):
                     elif att.content_type.startswith("video/"):
                         msg_type = MessageType.VIDEO
                     elif att.content_type.startswith("audio/"):
-                        if self._is_discord_voice_message_attachment(att):
+                        if is_native_voice_message or self._is_discord_voice_message_attachment(att):
                             msg_type = MessageType.VOICE
                         else:
                             msg_type = MessageType.AUDIO
@@ -5058,6 +5282,16 @@ def _define_discord_view_classes() -> None:
             self.allowed_user_ids = allowed_user_ids
             self.allowed_role_ids = allowed_role_ids or set()
             self.resolved = False
+            labels = {
+                "Allow Once": t("discord.allow_once"),
+                "Allow Session": t("discord.allow_session"),
+                "Always Allow": t("discord.always_allow"),
+                "Deny": t("discord.deny"),
+            }
+            for child in self.children:
+                label = getattr(child, "label", None)
+                if label in labels:
+                    setattr(child, "label", labels[label])
 
         def _check_auth(self, interaction: discord.Interaction) -> bool:
             """Verify the user clicking is authorized."""
@@ -5072,13 +5306,13 @@ def _define_discord_view_classes() -> None:
             """Resolve the approval via the gateway approval queue and update the embed."""
             if self.resolved:
                 await interaction.response.send_message(
-                    "This approval has already been resolved~", ephemeral=True
+                    t("discord.approval_resolved"), ephemeral=True
                 )
                 return
 
             if not self._check_auth(interaction):
                 await interaction.response.send_message(
-                    "You're not authorized to approve commands~", ephemeral=True
+                    t("discord.not_authorized_approve"), ephemeral=True
                 )
                 return
 
@@ -5088,13 +5322,15 @@ def _define_discord_view_classes() -> None:
             embed = interaction.message.embeds[0] if interaction.message.embeds else None
             if embed:
                 embed.color = color
-                embed.set_footer(text=f"{label} by {interaction.user.display_name}")
+                embed.set_footer(text=t(
+                    "discord.decision_by",
+                    decision=label,
+                    user=interaction.user.display_name,
+                ))
 
-            # Disable all buttons
-            for child in self.children:
-                child.disabled = True
-
-            await interaction.response.edit_message(embed=embed, view=self)
+            # Remove the component row after a decision. Passing the resolved
+            # view back would leave disabled buttons visible in Discord.
+            await interaction.response.edit_message(embed=embed, view=None)
 
             # Unblock the waiting agent thread via the gateway approval queue
             try:
@@ -5111,25 +5347,25 @@ def _define_discord_view_classes() -> None:
         async def allow_once(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "once", discord.Color.green(), "Approved once")
+            await self._resolve(interaction, "once", discord.Color.green(), t("discord.approved_once"))  # pyright: ignore[reportOptionalMemberAccess]
 
         @discord.ui.button(label="Allow Session", style=discord.ButtonStyle.grey)
         async def allow_session(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "session", discord.Color.blue(), "Approved for session")
+            await self._resolve(interaction, "session", discord.Color.blue(), t("discord.approved_session"))  # pyright: ignore[reportOptionalMemberAccess]
 
         @discord.ui.button(label="Always Allow", style=discord.ButtonStyle.blurple)
         async def allow_always(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "always", discord.Color.purple(), "Approved permanently")
+            await self._resolve(interaction, "always", discord.Color.purple(), t("discord.approved_permanent"))  # pyright: ignore[reportOptionalMemberAccess]
 
         @discord.ui.button(label="Deny", style=discord.ButtonStyle.red)
         async def deny(
             self, interaction: discord.Interaction, button: discord.ui.Button
         ):
-            await self._resolve(interaction, "deny", discord.Color.red(), "Denied")
+            await self._resolve(interaction, "deny", discord.Color.red(), t("discord.denied"))  # pyright: ignore[reportOptionalMemberAccess]
 
         async def on_timeout(self):
             """Handle view timeout -- disable buttons and mark as expired."""

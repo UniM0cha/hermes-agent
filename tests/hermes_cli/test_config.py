@@ -72,6 +72,43 @@ class TestLoadConfigDefaults:
             assert config["terminal"]["backend"] == "local"
             assert config["display"]["interim_assistant_messages"] is True
 
+    def test_discord_realtime_defaults_are_loaded_without_overwriting_discord_settings(self, tmp_path):
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            (tmp_path / "config.yaml").write_text("discord:\n  require_mention: false\n")
+
+            config = load_config()
+
+            assert config["discord"]["require_mention"] is False
+            realtime = config["discord"]["realtime"]
+            assert realtime["enabled"] is True
+            assert realtime["model"] == "gpt-realtime-2"
+            assert realtime["voice"] == "alloy"
+            assert realtime["controller_only"] is True
+            assert realtime["tool_bridge_enabled"] is True
+            assert "Your name is 니코" in realtime["instructions"]
+            assert "Do not introduce yourself as Hermes" in realtime["instructions"]
+            assert "존댓말" in realtime["instructions"]
+            assert "do not use 반말" in realtime["instructions"]
+            assert "When run_hermes_task returns a job_id" in realtime["instructions"]
+            assert "Hermes job results will be injected back" in realtime["instructions"]
+            assert "get_hermes_task_status" in realtime["instructions"]
+            assert "cancel_hermes_task" in realtime["instructions"]
+            assert "Do not claim a Hermes job is complete" in realtime["instructions"]
+            assert "You are Hermes Agent" not in realtime["instructions"]
+            assert realtime["turn_detection"] == {
+                "type": "semantic_vad",
+                "eagerness": "high",
+                "create_response": True,
+                "interrupt_response": True,
+            }
+            assert realtime["reasoning"] == {"effort": "low"}
+            assert realtime["silence_frame_ms"] == 100
+            assert realtime["trailing_silence_seconds"] == 3.0
+            assert realtime["progress_notice_first_seconds"] == 8.0
+            assert realtime["progress_notice_interval_seconds"] == 30.0
+            assert realtime["max_progress_notices_per_job"] == 3
+            assert realtime["max_pending_voice_notices"] == 10
+
     def test_legacy_root_level_max_turns_migrates_to_agent_config(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
             config_path = tmp_path / "config.yaml"

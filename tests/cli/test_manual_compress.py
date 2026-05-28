@@ -2,7 +2,20 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tests.cli.test_cli_init import _make_cli
+
+
+@pytest.fixture(autouse=True)
+def _force_english_i18n(monkeypatch):
+    """Keep user-local display.language settings from changing assertions."""
+    from agent.i18n import reset_language_cache
+
+    monkeypatch.setenv("HERMES_LANGUAGE", "en")
+    reset_language_cache()
+    yield
+    reset_language_cache()
 
 
 def _make_history() -> list[dict[str, str]]:

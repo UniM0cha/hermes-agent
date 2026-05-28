@@ -32,6 +32,7 @@ from agent.auxiliary_client import set_runtime_main
 from agent.codex_responses_adapter import _summarize_user_message_for_log
 from agent.display import KawaiiSpinner
 from agent.error_classifier import FailoverReason, classify_api_error
+from agent.i18n import t
 from agent.iteration_budget import IterationBudget
 from agent.memory_manager import build_memory_context_block
 from agent.message_sanitization import (
@@ -524,9 +525,11 @@ def run_conversation(
                 f"{agent.context_compressor.context_length:,}",
             )
             agent._emit_status(
-                f"📦 Preflight compression: ~{_preflight_tokens:,} tokens "
-                f">= {agent.context_compressor.threshold_tokens:,} threshold. "
-                "This may take a moment."
+                t(
+                    "gateway_runtime.preflight_compression",
+                    tokens=f"{_preflight_tokens:,}",
+                    threshold=f"{agent.context_compressor.threshold_tokens:,}",
+                )
             )
             # May need multiple passes for very large sessions with small
             # context windows (each pass summarises the middle N turns).
@@ -3651,7 +3654,7 @@ def run_conversation(
                     )
 
                 if agent.compression_enabled and _compressor.should_compress(_real_tokens):
-                    agent._safe_print("  ⟳ compacting context…")
+                    agent._safe_print(t("gateway_runtime.compacting_context"))
                     messages, active_system_prompt = agent._compress_context(
                         messages, system_message,
                         approx_tokens=agent.context_compressor.last_prompt_tokens,

@@ -19,6 +19,7 @@ import unicodedata
 from typing import Optional
 from hermes_cli.config import cfg_get
 
+from agent.i18n import t
 from utils import env_var_enabled, is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -1023,31 +1024,143 @@ def check_dangerous_command(command: str, env_type: str,
 # Combined pre-exec guard (tirith + dangerous command detection)
 # =========================================================================
 
-def _format_tirith_description(tirith_result: dict) -> str:
-    """Build a human-readable description from tirith findings.
+_TIRITH_TLD_RE = re.compile(r"(?<![A-Za-z0-9-])\.[A-Za-z0-9-]{2,63}\b")
+_PIPE_TO_INTERPRETER_DESC_RE = re.compile(
+    r"output from ['\"](?P<source>[^'\"]+)['\"].*?interpreter ['\"](?P<interpreter>[^'\"]+)['\"]",
+    re.IGNORECASE,
+)
+_PIPE_TO_INTERPRETER_TITLE_RE = re.compile(
+    r"pipe to interpreter\s*:\s*(?P<source>[^|:]+?)\s*\|\s*(?P<interpreter>[^\s:;]+)",
+    re.IGNORECASE,
+)
 
-    Includes severity, title, and description for each finding so users
-    can make an informed approval decision.
+
+def _i18n_or_default(key: str, default: str, **format_kwargs) -> str:
+    """Return a translated i18n key, or ``default`` when no key exists."""
+    translated = t(key, **format_kwargs)
+    return default if translated == key else translated
+
+
+def _extract_tirith_tld(finding: dict) -> str:
+    """Extract a TLD like ``.dev`` from common Tirith finding fields."""
+    fields = [
+        finding.get("tld"),
+        finding.get("value"),
+        finding.get("description"),
+        finding.get("message"),
+        finding.get("detail"),
+    ]
+    evidence = finding.get("evidence")
+    if isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, dict):
+                fields.extend([item.get("raw"), item.get("value"), item.get("url")])
+            else:
+                fields.append(item)
+
+    for value in fields:
+        match = _TIRITH_TLD_RE.search(str(value or ""))
+        if match:
+            return match.group(0)
+    return ""
+
+
+def _extract_pipe_to_interpreter_parts(finding: dict) -> tuple[str, str]:
+    """Extract source command and interpreter names from a Tirith finding."""
+    fields = [
+        finding.get("title"),
+        finding.get("description"),
+        finding.get("message"),
+        finding.get("detail"),
+    ]
+    evidence = finding.get("evidence")
+    if isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, dict):
+                fields.extend([item.get("raw"), item.get("matched"), item.get("value")])
+            else:
+                fields.append(item)
+
+    for value in fields:
+        text = str(value or "")
+        match = _PIPE_TO_INTERPRETER_DESC_RE.search(text)
+        if match:
+            return match.group("source").strip(), match.group("interpreter").strip()
+        match = _PIPE_TO_INTERPRETER_TITLE_RE.search(text)
+        if match:
+            return match.group("source").strip(), match.group("interpreter").strip()
+    return "", ""
+
+
+def _localize_tirith_finding(finding: dict) -> tuple[str, str, str]:
+    """Return localized ``(severity, title, description)`` for a Tirith finding."""
+    raw_severity = str(finding.get("severity", "") or "")
+    severity_key = raw_severity.strip().lower()
+    severity = (
+        _i18n_or_default(f"approval.security_scan.severity.{severity_key}", raw_severity)
+        if severity_key else ""
+    )
+
+    rule_id = str(finding.get("rule_id", "") or "").strip()
+    raw_title = str(finding.get("title", "") or "")
+    raw_desc = str(finding.get("description", "") or "")
+
+    title = raw_title
+    desc = raw_desc
+    if rule_id:
+        format_kwargs = {}
+        if rule_id == "lookalike_tld":
+            tld = _extract_tirith_tld(finding)
+            if tld:
+                format_kwargs["tld"] = tld
+        elif rule_id == "pipe_to_interpreter":
+            source, interpreter = _extract_pipe_to_interpreter_parts(finding)
+            if source and interpreter:
+                format_kwargs.update({"source": source, "interpreter": interpreter})
+
+        title = _i18n_or_default(
+            f"approval.security_scan.findings.{rule_id}.title",
+            raw_title,
+            **format_kwargs,
+        )
+        # Some Tirith descriptions include dynamic values (e.g. the TLD,
+        # source command, or interpreter). Keep unknown or unparseable scanner
+        # prose raw instead of pretending we translated arbitrary text.
+        desc_key = f"approval.security_scan.findings.{rule_id}.description"
+        desc = _i18n_or_default(desc_key, raw_desc, **format_kwargs)
+        if rule_id in {"lookalike_tld", "pipe_to_interpreter"} and not format_kwargs:
+            title = raw_title
+            desc = raw_desc
+
+    return severity, title, desc
+
+
+def _format_tirith_description(tirith_result: dict) -> str:
+    """Build a localized, human-readable description from Tirith findings.
+
+    Includes severity, title, and description for each finding so users can make
+    an informed approval decision. Known Tirith rule text is translated through
+    the catalog; unknown scanner prose is preserved verbatim.
     """
     findings = tirith_result.get("findings") or []
     if not findings:
-        summary = tirith_result.get("summary") or "security issue detected"
-        return f"Security scan: {summary}"
+        summary = tirith_result.get("summary") or t("approval.security_scan.issue_detected")
+        return t("approval.security_scan.summary", summary=summary)
 
     parts = []
     for f in findings:
-        severity = f.get("severity", "")
-        title = f.get("title", "")
-        desc = f.get("description", "")
+        if not isinstance(f, dict):
+            continue
+        severity, title, desc = _localize_tirith_finding(f)
         if title and desc:
             parts.append(f"[{severity}] {title}: {desc}" if severity else f"{title}: {desc}")
         elif title:
             parts.append(f"[{severity}] {title}" if severity else title)
     if not parts:
-        summary = tirith_result.get("summary") or "security issue detected"
-        return f"Security scan: {summary}"
+        summary = tirith_result.get("summary") or t("approval.security_scan.issue_detected")
+        return t("approval.security_scan.summary", summary=summary)
 
-    return "Security scan — " + "; ".join(parts)
+    return t("approval.security_scan.prefix") + " — " + "; ".join(parts)
 
 
 def check_all_command_guards(command: str, env_type: str,

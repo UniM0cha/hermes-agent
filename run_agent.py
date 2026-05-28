@@ -51,7 +51,7 @@ import threading
 from types import SimpleNamespace
 import urllib.request
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from urllib.parse import urlparse, parse_qs, urlunparse
 # NOTE: `from openai import OpenAI` is deliberately NOT at module top — the
 # SDK pulls ~240 ms of imports. We expose `OpenAI` as a thin proxy object
@@ -204,6 +204,7 @@ from agent.tool_dispatch_helpers import (
 )
 from utils import atomic_json_write, base_url_host_matches, base_url_hostname, env_var_enabled, normalize_proxy_url
 from hermes_cli.config import cfg_get
+
 
 
 
@@ -953,6 +954,13 @@ class AIAgent:
         base_url = getattr(self, "_base_url", None) or self.base_url or ""
         if uses_implicit_default and base_url and is_local_endpoint(base_url):
             return float("inf")
+
+        # If the user explicitly configured a stale timeout, honor it exactly.
+        # The large-context scaling below is only a safety valve for the implicit
+        # default; otherwise a requested 30s Codex no-events cutoff silently
+        # stretches back to 450/600s on long conversations.
+        if not uses_implicit_default:
+            return stale_base
 
         from agent.chat_completion_helpers import estimate_request_context_tokens
         est_tokens = estimate_request_context_tokens(api_payload)
@@ -2763,15 +2771,37 @@ class AIAgent:
                 exc,
             )
 
-    def _run_codex_stream(self, api_kwargs: dict, client: Any = None, on_first_delta: callable = None):
+    def _run_codex_stream(
+        self,
+        api_kwargs: dict,
+        client: Any = None,
+        on_first_delta: Callable | None = None,
+        on_stream_event: Callable | None = None,
+    ):
         """Forwarder — see ``agent.codex_runtime.run_codex_stream``."""
         from agent.codex_runtime import run_codex_stream
-        return run_codex_stream(self, api_kwargs, client, on_first_delta)
+        return run_codex_stream(
+            self,
+            api_kwargs,
+            client,
+            on_first_delta,
+            on_stream_event=on_stream_event,
+        )
 
-    def _run_codex_create_stream_fallback(self, api_kwargs: dict, client: Any = None):
+    def _run_codex_create_stream_fallback(
+        self,
+        api_kwargs: dict,
+        client: Any = None,
+        on_stream_event: Callable | None = None,
+    ):
         """Forwarder — see ``agent.codex_runtime.run_codex_create_stream_fallback``."""
         from agent.codex_runtime import run_codex_create_stream_fallback
-        return run_codex_create_stream_fallback(self, api_kwargs, client)
+        return run_codex_create_stream_fallback(
+            self,
+            api_kwargs,
+            client,
+            on_stream_event=on_stream_event,
+        )
 
     def _try_refresh_codex_client_credentials(self, *, force: bool = True) -> bool:
         if self.api_mode != "codex_responses" or self.provider not in {"openai-codex", "xai-oauth"}:
