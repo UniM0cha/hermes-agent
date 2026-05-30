@@ -335,17 +335,17 @@ gateway:
       messages will be delivered here."
 
   status:
-    header: "📊 **Hermes Gateway Status**"
-    session_id: "**Session ID:** `{session_id}`"
-    title: "**Title:** {title}"
-    created: "**Created:** {timestamp}"
-    last_activity: "**Last Activity:** {timestamp}"
-    tokens: "**Tokens:** {tokens}"
-    agent_running: "**Agent Running:** {state}"
-    state_yes: "Yes ⚡"
-    state_no: "No"
-    queued: "**Queued follow-ups:** {count}"
-    platforms: "**Connected Platforms:** {platforms}"
+    header:                "📊 **Hermes Gateway Status**"
+    session_id:            "**Session ID:** `{session_id}`"
+    title:                 "**Title:** {title}"
+    created:               "**Created:** {timestamp}"
+    last_activity:         "**Last Activity:** {timestamp}"
+    tokens:                "**Cumulative API tokens (re-sent each call):** {tokens}"
+    agent_running:         "**Agent Running:** {state}"
+    state_yes:             "Yes ⚡"
+    state_no:              "No"
+    queued:                "**Queued follow-ups:** {count}"
+    platforms:             "**Connected Platforms:** {platforms}"
 
   stop:
     stopped_pending: "⚡ Stopped. The agent hadn't started yet — you can continue this

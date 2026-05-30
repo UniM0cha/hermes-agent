@@ -325,17 +325,17 @@ gateway:
       kruisplatform-boodskappe sal hier afgelewer word."
 
   status:
-    header: "📊 **Hermes Gateway Status**"
-    session_id: "**Sessie-ID:** `{session_id}`"
-    title: "**Titel:** {title}"
-    created: "**Geskep:** {timestamp}"
-    last_activity: "**Laaste aktiwiteit:** {timestamp}"
-    tokens: "**Tokens:** {tokens}"
-    agent_running: "**Agent loop:** {state}"
-    state_yes: "Ja ⚡"
-    state_no: "Nee"
-    queued: "**Opgehoopte opvolge:** {count}"
-    platforms: "**Verbinde Platforms:** {platforms}"
+    header:                "📊 **Hermes Gateway Status**"
+    session_id:            "**Sessie-ID:** `{session_id}`"
+    title:                 "**Titel:** {title}"
+    created:               "**Geskep:** {timestamp}"
+    last_activity:         "**Laaste aktiwiteit:** {timestamp}"
+    tokens:                "**Kumulatiewe API-tokens (elke oproep weer gestuur):** {tokens}"
+    agent_running:         "**Agent loop:** {state}"
+    state_yes:             "Ja ⚡"
+    state_no:              "Nee"
+    queued:                "**Opgehoopte opvolge:** {count}"
+    platforms:             "**Verbinde Platforms:** {platforms}"
 
   stop:
     stopped_pending: "⚡ Gestop. Die agent het nog nie begin nie — jy kan met hierdie

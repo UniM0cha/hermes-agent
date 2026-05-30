@@ -330,17 +330,17 @@ gateway:
       cron e mensagens entre plataformas serão entregues aqui."
 
   status:
-    header: "📊 **Estado do Hermes Gateway**"
-    session_id: "**ID da sessão:** `{session_id}`"
-    title: "**Título:** {title}"
-    created: "**Criada:** {timestamp}"
-    last_activity: "**Última atividade:** {timestamp}"
-    tokens: "**Tokens:** {tokens}"
-    agent_running: "**Agente em execução:** {state}"
-    state_yes: "Sim ⚡"
-    state_no: "Não"
-    queued: "**Seguimentos em fila:** {count}"
-    platforms: "**Plataformas ligadas:** {platforms}"
+    header:                "📊 **Estado do Hermes Gateway**"
+    session_id:            "**ID da sessão:** `{session_id}`"
+    title:                 "**Título:** {title}"
+    created:               "**Criada:** {timestamp}"
+    last_activity:         "**Última atividade:** {timestamp}"
+    tokens:                "**Tokens de API cumulativos (reenviados a cada chamada):** {tokens}"
+    agent_running:         "**Agente em execução:** {state}"
+    state_yes:             "Sim ⚡"
+    state_no:              "Não"
+    queued:                "**Seguimentos em fila:** {count}"
+    platforms:             "**Plataformas ligadas:** {platforms}"
 
   stop:
     stopped_pending: "⚡ Parado. O agente ainda não tinha começado — podes continuar
