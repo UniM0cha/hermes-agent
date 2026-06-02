@@ -586,7 +586,9 @@ class TestSummaryFallbackToMainModel:
         with patch(
             "agent.context_compressor.call_llm",
             side_effect=err_json,
-        ), patch("agent.context_compressor.time.monotonic", return_value=1000.0):
+        ), patch("agent.context_compressor.time.monotonic", return_value=1000.0), patch(
+            "agent.context_compressor.time.sleep"
+        ):
             result = c._generate_summary(self._msgs())
 
         assert result is None
@@ -670,9 +672,41 @@ class TestStreamingClosedFallback:
         assert mock_call.call_count == 2
         assert result is not None
 
-    def test_streaming_closed_on_main_uses_short_cooldown(self):
+    def test_transient_streaming_closed_retries_twice_then_succeeds_on_main(self):
+        """Compression summary generation should retry transient failures up
+        to three attempts before giving up.  A flaky stream close on the main
+        compression route must not immediately fall back to a placeholder."""
+        mock_ok = MagicMock()
+        mock_ok.choices = [MagicMock()]
+        mock_ok.choices[0].message.content = "summary after retry"
+        err = Exception("RemoteProtocolError: response ended prematurely")
+
+        with patch("agent.context_compressor.get_model_context_length", return_value=100000):
+            c = ContextCompressor(
+                model="main-model",
+                # No summary_model_override → exercise same-route retries.
+                quiet_mode=True,
+            )
+
+        with patch(
+            "agent.context_compressor.call_llm",
+            side_effect=[err, err, mock_ok],
+        ) as mock_call, patch(
+            "agent.context_compressor._is_connection_error",
+            return_value=True,
+        ), patch("agent.context_compressor.time.sleep") as mock_sleep:
+            result = c._generate_summary(self._msgs())
+
+        assert mock_call.call_count == 3
+        assert mock_sleep.call_args_list[0].args == (2,)
+        assert mock_sleep.call_args_list[1].args == (5,)
+        assert result is not None
+        assert "summary after retry" in result
+        assert c._summary_failure_cooldown_until == 0.0
+
+    def test_streaming_closed_on_main_uses_short_cooldown_after_three_attempts(self):
         """When already on the main model, a streaming-closed error should use
-        the 30s cooldown, not the default 60s — these errors are transient."""
+        the 30s cooldown after all three retry attempts fail."""
         err = Exception("RemoteProtocolError: response ended prematurely")
 
         with patch("agent.context_compressor.get_model_context_length", return_value=100000):
@@ -685,12 +719,16 @@ class TestStreamingClosedFallback:
         with patch(
             "agent.context_compressor.call_llm",
             side_effect=err,
-        ), patch(
+        ) as mock_call, patch(
             "agent.context_compressor._is_connection_error",
             return_value=True,
-        ), patch("agent.context_compressor.time.monotonic", return_value=1000.0):
+        ), patch("agent.context_compressor.time.monotonic", return_value=1000.0), patch(
+            "agent.context_compressor.time.sleep"
+        ) as mock_sleep:
             result = c._generate_summary(self._msgs())
 
+        assert mock_call.call_count == 3
+        assert mock_sleep.call_count == 2
         assert result is None
         # Streaming-closed should use the 30s short cooldown.
         assert c._summary_failure_cooldown_until == 1030.0
