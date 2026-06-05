@@ -42,7 +42,7 @@ jobs:
   #   4. Uses a GitHub App token (not GITHUB_TOKEN) so the fix commit
   #      triggers downstream nix.yml verification.
   auto-fix-main:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.repository == 'NousResearch/hermes-agent'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     concurrency:
