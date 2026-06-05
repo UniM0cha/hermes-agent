@@ -1392,7 +1392,63 @@ The user has requested that this compaction PRIORITISE preserving all informatio
             }
             if self.summary_model:
                 call_kwargs["model"] = self.summary_model
-            response = call_llm(**call_kwargs)
+
+            response = None
+            retry_backoffs = (2, 5)
+            max_summary_attempts = 3
+            for attempt in range(1, max_summary_attempts + 1):
+                try:
+                    response = call_llm(**call_kwargs)
+                    break
+                except RuntimeError:
+                    # No provider configured — do not spin on deterministic
+                    # configuration failures.  Preserve the existing outer
+                    # RuntimeError handling and user-facing warning.
+                    raise
+                except Exception as e:
+                    _status = getattr(e, "status_code", None) or getattr(getattr(e, "response", None), "status_code", None)
+                    _err_str = str(e).lower()
+                    _is_model_not_found = (
+                        _status in {404, 503}
+                        or "model_not_found" in _err_str
+                        or "does not exist" in _err_str
+                        or "no available channel" in _err_str
+                    )
+                    _is_timeout = (
+                        _status in {408, 429, 502, 504}
+                        or "timeout" in _err_str
+                    )
+                    _is_json_decode = (
+                        isinstance(e, json.JSONDecodeError)
+                        or "expecting value" in _err_str
+                    )
+                    _is_streaming_closed = _is_connection_error(e)
+                    _is_retryable = (
+                        _is_timeout
+                        or _is_json_decode
+                        or _is_streaming_closed
+                    )
+                    _is_separate_summary_model = bool(self.summary_model and self.summary_model != self.model)
+                    if (
+                        attempt < max_summary_attempts
+                        and _is_retryable
+                        and not _is_model_not_found
+                        and not _is_separate_summary_model
+                    ):
+                        delay = retry_backoffs[attempt - 1]
+                        logger.warning(
+                            "Context compression summary attempt %d/%d failed with transient error: %s. Retrying in %ds.",
+                            attempt,
+                            max_summary_attempts,
+                            e,
+                            delay,
+                        )
+                        time.sleep(delay)
+                        continue
+                    raise
+
+            if response is None:  # Defensive; loop either breaks or raises.
+                return None
             content = response.choices[0].message.content
             # Handle cases where content is not a string (e.g., dict from llama.cpp)
             if not isinstance(content, str):
