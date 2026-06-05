@@ -396,8 +396,11 @@ gateway:
     root_restore_example: "Example: Send /topic {session_id} inside a topic."
 
   undo:
-    nothing: "Nincs mit visszavonni."
-    removed: "↩️ {count} üzenet visszavonva.\nEltávolítva: \"{preview}\""
+
+    nothing:               "Nincs mit visszavonni."
+    removed:               "↩️ {turns} fordulat visszavonva ({count} üzenet).\nBiztonsági mentés ide: \"{preview}\"\nMásold/szerkeszd a fenti szöveget, és küldd el, hogy innen újra kérdezz."
+    invalid_count:         "Érvénytelen szám \"{arg}\" — használd a /undo vagy /undo N parancsot."
+
 
   update:
     platform_not_messaging: "✗ A /update csak üzenetküldő platformokról érhető el.

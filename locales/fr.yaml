@@ -396,8 +396,11 @@ gateway:
     root_restore_example: "Example: Send /topic {session_id} inside a topic."
 
   undo:
-    nothing: "Rien à annuler."
-    removed: "↩️ {count} message(s) annulé(s).\nSupprimé : « {preview} »"
+
+    nothing:               "Rien à annuler."
+    removed:               "↩️ {turns} tour(s) annulé(s) ({count} message(s)).\nSauvegardé dans : « {preview} »\nCopiez/modifiez le texte ci-dessus et envoyez-le pour relancer à partir d'ici."
+    invalid_count:         "Nombre invalide « {arg} » — utilisez /undo ou /undo N."
+
 
   update:
     platform_not_messaging: "✗ /update n'est disponible que depuis les plateformes
