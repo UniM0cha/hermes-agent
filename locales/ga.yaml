@@ -842,6 +842,7 @@ commands:
   alias_description: "Alias for /{command} — {description}"
   slack_hermes_description: "Talk to Hermes or run a subcommand"
   descriptions:
+    "start": "Acknowledge platform start pings without a reply"
     "new": "Start a new session (fresh session ID + history)"
     "topic": "Enable or inspect Telegram DM topic sessions"
     "clear": "Clear screen and start a new session"

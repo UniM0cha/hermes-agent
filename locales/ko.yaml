@@ -746,6 +746,7 @@ commands:
   alias_description: "/{command}의 별칭 — {description}"
   slack_hermes_description: "Hermes에게 말하거나 하위 명령 실행"
   descriptions:
+    "start": "Acknowledge platform start pings without a reply"
     "new": "새 세션 시작(새 세션 ID와 기록)"
     "topic": "Telegram DM 주제 세션 켜기/확인"
     "clear": "화면을 지우고 새 세션 시작"
