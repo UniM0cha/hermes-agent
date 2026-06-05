@@ -142,7 +142,7 @@ gateway:
     summary_failed: "⚠️ Summary generation failed ({error}). {count} historical message(s)
       were removed and replaced with a placeholder; earlier context is no longer recoverable.
       Consider checking your auxiliary.compression model configuration."
-    aborted:               "⚠️ Compression aborted ({error}). No messages were dropped — conversation is unchanged. Run /compress to retry, /reset for a clean session, or check your auxiliary.compression model configuration."
+    aborted:               "⚠️ Context compression aborted ({error}). No messages were dropped — conversation is unchanged. Run /compress to retry, /reset for a clean session, or check your auxiliary.compression model configuration."
     aux_failed: "ℹ️ Configured compression model `{model}` failed ({error}). Recovered
       using your main model — context is intact — but you may want to check `auxiliary.compression.model`
       in config.yaml."
@@ -675,7 +675,7 @@ gateway_runtime:
     Reply `/approve` (yes) or `/deny` (no), or type your answer directly."
   update_timeout: "❌ Hermes update timed out after 30 minutes."
 
-  request_failed: "Sorry, I encountered an error:\n{error}"
+  request_failed: "Sorry, I encountered an error:\n{error}\nTry again or use /reset to start a fresh session."
   processing_stopped: 'Processing stopped: {error}'
   processing_no_response: Processing completed, but no response was generated.
   elapsed_min: '{minutes} min elapsed'
@@ -817,6 +817,7 @@ commands:
   alias_description: "Alias for /{command} — {description}"
   slack_hermes_description: "Talk to Hermes or run a subcommand"
   descriptions:
+    "start": "Acknowledge platform start pings without a reply"
     "new": "Start a new session (fresh session ID + history)"
     "topic": "Enable or inspect Telegram DM topic sessions"
     "clear": "Clear screen and start a new session"
