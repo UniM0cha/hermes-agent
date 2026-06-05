@@ -1183,13 +1183,37 @@ def _build_media_placeholder(event) -> str:
     media_types = getattr(event, "media_types", None) or []
     for i, url in enumerate(media_urls):
         mtype = media_types[i] if i < len(media_types) else ""
-        if mtype.startswith("image/") or getattr(event, "message_type", None) == MessageType.PHOTO:
+        if _event_media_entry_is_image(event, i, mtype):
             parts.append(f"[User sent an image: {url}]")
         elif mtype.startswith("audio/"):
             parts.append(f"[User sent audio: {url}]")
         else:
             parts.append(f"[User sent a file: {url}]")
     return "\n".join(parts)
+
+
+def _event_media_entry_is_image(event, index: int, media_type: str = "") -> bool:
+    """Return True when a single media entry should be routed as an image.
+
+    A mixed Discord message can have ``message_type == PHOTO`` because at
+    least one attachment is an image while ``media_urls`` also includes
+    text/PDF documents. Treating every URL as an image in that case causes
+    text attachments to be base64-wrapped as ``data:image/jpeg`` and rejected
+    by vision-capable providers. Prefer per-entry MIME data whenever present;
+    only fall back to the event-level PHOTO type for legacy adapters that do
+    not populate ``media_types``.
+    """
+    mtype = (media_type or "").strip().lower()
+    if mtype:
+        return mtype.startswith("image/")
+
+    media_types = getattr(event, "media_types", None) or []
+    if index < len(media_types):
+        candidate = str(media_types[index] or "").strip().lower()
+        if candidate:
+            return candidate.startswith("image/")
+
+    return getattr(event, "message_type", None) == MessageType.PHOTO
 
 
 def _format_duration(seconds: float) -> str:
@@ -8080,7 +8104,7 @@ class GatewayRunner:
             audio_paths = []
             for i, path in enumerate(event.media_urls):
                 mtype = event.media_types[i] if i < len(event.media_types) else ""
-                if mtype.startswith("image/") or event.message_type == MessageType.PHOTO:
+                if _event_media_entry_is_image(event, i, mtype):
                     image_paths.append(path)
                 # MessageType.AUDIO = audio file attachment (e.g. .mp3, .m4a) — never STT
                 # MessageType.VOICE = voice message (Opus/OGG) — always STT
