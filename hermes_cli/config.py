@@ -2006,6 +2006,10 @@ DEFAULT_CONFIG = {
         # Wrap delivered cron responses with a header (task name) and footer
         # ("The agent cannot see this message").  Set to false for clean output.
         "wrap_response": True,
+        # Mirror successful platform cron deliveries into the matching gateway
+        # session transcript so replies to cron messages have context. Off by
+        # default to avoid changing existing deployments unexpectedly.
+        "mirror_deliveries_to_session": False,
         # Maximum number of due jobs to run in parallel per tick.
         # null/0 = unbounded (limited only by thread count).
         # 1 = serial (pre-v0.9 behaviour).

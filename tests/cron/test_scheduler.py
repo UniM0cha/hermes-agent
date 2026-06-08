@@ -487,8 +487,20 @@ class TestRoutingIntents:
             assert platforms == ["discord", "telegram"], f"token={token!r} -> {platforms}"
 
 
+class TestCronMirrorConfig:
+    def test_cron_mirror_deliveries_default_false(self):
+        with patch("cron.scheduler.load_config", return_value={}):
+            from cron.scheduler import _cron_mirror_deliveries_enabled
+            assert _cron_mirror_deliveries_enabled() is False
+
+    def test_cron_mirror_deliveries_enabled_from_config(self):
+        with patch("cron.scheduler.load_config", return_value={"cron": {"mirror_deliveries_to_session": True}}):
+            from cron.scheduler import _cron_mirror_deliveries_enabled
+            assert _cron_mirror_deliveries_enabled() is True
+
+
 class TestDeliverResultWrapping:
-    """Verify that cron deliveries are wrapped with header/footer and no longer mirrored."""
+    """Verify cron delivery wrapping and opt-in session mirroring."""
 
     def _safe_media_path(self, tmp_path, monkeypatch, name, data=b"media"):
         root = tmp_path / "media-cache"
@@ -788,8 +800,8 @@ class TestDeliverResultWrapping:
         assert "MEDIA:" not in text_sent
         assert "Report" in text_sent
 
-    def test_no_mirror_to_session_call(self):
-        """Cron deliveries should NOT mirror into the gateway session."""
+    def test_mirror_to_session_not_called_by_default(self):
+        """Cron deliveries should not mirror unless explicitly enabled."""
         from gateway.config import Platform
 
         pconfig = MagicMock()
@@ -799,6 +811,7 @@ class TestDeliverResultWrapping:
 
         with patch("gateway.config.load_gateway_config", return_value=mock_cfg), \
              patch("tools.send_message_tool._send_to_platform", new=AsyncMock(return_value={"success": True})), \
+             patch("cron.scheduler.load_config", return_value={"cron": {}}), \
              patch("gateway.mirror.mirror_to_session") as mirror_mock:
             job = {
                 "id": "test-job",
@@ -808,6 +821,99 @@ class TestDeliverResultWrapping:
             _deliver_result(job, "Hello!")
 
         mirror_mock.assert_not_called()
+
+    def test_mirror_to_session_called_when_enabled_after_standalone_success(self):
+        """When enabled, successful standalone cron delivery is mirrored to session context."""
+        from gateway.config import Platform
+
+        pconfig = MagicMock()
+        pconfig.enabled = True
+        mock_cfg = MagicMock()
+        mock_cfg.platforms = {Platform.TELEGRAM: pconfig}
+
+        with patch("gateway.config.load_gateway_config", return_value=mock_cfg), \
+             patch("tools.send_message_tool._send_to_platform", new=AsyncMock(return_value={"success": True})), \
+             patch("cron.scheduler.load_config", return_value={"cron": {"mirror_deliveries_to_session": True, "wrap_response": False}}), \
+             patch("gateway.mirror.mirror_to_session", return_value=True) as mirror_mock:
+            job = {
+                "id": "test-job",
+                "deliver": "origin",
+                "origin": {"platform": "telegram", "chat_id": "123", "thread_id": "42"},
+            }
+            _deliver_result(job, "Hello!")
+
+        mirror_mock.assert_called_once_with(
+            "telegram",
+            "123",
+            "Hello!",
+            source_label="cron",
+            thread_id="42",
+        )
+
+    def test_mirror_to_session_not_called_when_delivery_fails(self):
+        """Failed cron deliveries must not be mirrored into session context."""
+        from gateway.config import Platform
+
+        pconfig = MagicMock()
+        pconfig.enabled = True
+        mock_cfg = MagicMock()
+        mock_cfg.platforms = {Platform.TELEGRAM: pconfig}
+
+        with patch("gateway.config.load_gateway_config", return_value=mock_cfg), \
+             patch("tools.send_message_tool._send_to_platform", new=AsyncMock(return_value={"error": "boom"})), \
+             patch("cron.scheduler.load_config", return_value={"cron": {"mirror_deliveries_to_session": True}}), \
+             patch("gateway.mirror.mirror_to_session") as mirror_mock:
+            job = {
+                "id": "test-job",
+                "deliver": "origin",
+                "origin": {"platform": "telegram", "chat_id": "123"},
+            }
+            result = _deliver_result(job, "Hello!")
+
+        assert result is not None
+        mirror_mock.assert_not_called()
+
+    def test_mirror_to_session_called_when_enabled_after_live_adapter_success(self):
+        """When enabled, successful live-adapter cron delivery is mirrored to session context."""
+        from concurrent.futures import Future
+        from gateway.config import Platform
+
+        adapter = AsyncMock()
+        adapter.send.return_value = MagicMock(success=True)
+
+        pconfig = MagicMock()
+        pconfig.enabled = True
+        mock_cfg = MagicMock()
+        mock_cfg.platforms = {Platform.DISCORD: pconfig}
+
+        loop = MagicMock()
+        loop.is_running.return_value = True
+
+        def fake_schedule(coro, _loop):
+            future = Future()
+            future.set_result(MagicMock(success=True))
+            coro.close()
+            return future
+
+        job = {
+            "id": "live-job",
+            "deliver": "origin",
+            "origin": {"platform": "discord", "chat_id": "9876", "thread_id": "555"},
+        }
+
+        with patch("gateway.config.load_gateway_config", return_value=mock_cfg), \
+             patch("cron.scheduler.load_config", return_value={"cron": {"mirror_deliveries_to_session": True, "wrap_response": False}}), \
+             patch("agent.async_utils.safe_schedule_threadsafe", side_effect=fake_schedule), \
+             patch("gateway.mirror.mirror_to_session", return_value=True) as mirror_mock:
+            _deliver_result(job, "Live hello", adapters={Platform.DISCORD: adapter}, loop=loop)
+
+        mirror_mock.assert_called_once_with(
+            "discord",
+            "9876",
+            "Live hello",
+            source_label="cron",
+            thread_id="555",
+        )
 
     def test_origin_delivery_preserves_thread_id(self):
         """Origin delivery should forward thread_id to the send helper."""
