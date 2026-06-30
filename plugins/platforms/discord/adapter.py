@@ -4819,6 +4819,36 @@ class DiscordAdapter(BasePlatformAdapter):
             )
             return None
 
+    async def rename_thread(
+        self,
+        thread_id: str,
+        name: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Rename an existing Discord thread by id."""
+        if not self._client or not DISCORD_AVAILABLE:
+            return
+        try:
+            channel_id = int(thread_id)
+        except (TypeError, ValueError):
+            return
+
+        try:
+            thread = self._client.get_channel(channel_id)
+            if thread is None:
+                thread = await self._client.fetch_channel(channel_id)
+        except Exception as exc:
+            logger.debug("[%s] Thread rename: cannot resolve thread %s: %s", self.name, thread_id, exc, exc_info=True)
+            return
+
+        if thread is None:
+            return
+        edit = getattr(thread, "edit", None)
+        if edit is None:
+            return
+        cleaned = re.sub(r"\s+", " ", str(name or "")).strip()[:100] or "Hermes Chat"
+        await edit(name=cleaned, reason=reason)
+
     async def send_exec_approval(
         self, chat_id: str, command: str, session_key: str,
         description: str = "dangerous command",
