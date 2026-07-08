@@ -2917,6 +2917,15 @@ class DiscordAdapter(BasePlatformAdapter):
             return any(getattr(r, "id", None) in allowed_roles for r in m_roles)
 
         # Guild path: role check is scoped to THIS guild only.
+        # Discord's @everyone role ID is the guild ID.  Some Message/Member
+        # payloads do not expose that implicit role in ``Member.roles`` even
+        # though every guild message author necessarily has it.  Honor it
+        # explicitly so deployments can authorize an entire guild by putting
+        # the guild ID in DISCORD_ALLOWED_ROLES without depending on privileged
+        # member role payload shape.
+        if getattr(guild, "id", None) in allowed_roles:
+            return True
+
         # 1) Prefer the direct Member object passed in (correct guild by construction).
         direct_roles = getattr(author, "roles", None) if author is not None else None
         author_guild = getattr(author, "guild", None)

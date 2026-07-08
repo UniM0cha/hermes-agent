@@ -202,6 +202,43 @@ def test_guild_message_role_check_allows_when_role_in_same_guild(monkeypatch):
     )
 
 
+def test_guild_message_allows_everyone_role_id_even_without_member_roles(monkeypatch):
+    """Discord's @everyone role ID is the guild ID.
+
+    Authorizing that role should allow messages from that guild even when the
+    event payload/fallback member lookup does not expose the implicit
+    @everyone role in Member.roles.
+    """
+    _set_dm_role_auth_guild(monkeypatch)
+
+    guild = SimpleNamespace(id=222222, get_member=lambda uid: None)
+    author = SimpleNamespace(id=42, roles=[], guild=guild)
+    adapter = _make_adapter(allowed_roles=[222222], guilds=[guild])
+
+    assert (
+        adapter._is_allowed_user(
+            "42", author=author, guild=guild, is_dm=False
+        )
+        is True
+    )
+
+
+def test_guild_message_everyone_role_id_stays_scoped_to_origin_guild(monkeypatch):
+    """An @everyone-style guild ID must not authorize other guilds."""
+    _set_dm_role_auth_guild(monkeypatch)
+
+    trusted_guild = SimpleNamespace(id=222222, get_member=lambda uid: None)
+    other_guild = SimpleNamespace(id=333333, get_member=lambda uid: None)
+    adapter = _make_adapter(allowed_roles=[222222], guilds=[trusted_guild, other_guild])
+
+    assert (
+        adapter._is_allowed_user(
+            "42", author=None, guild=other_guild, is_dm=False
+        )
+        is False
+    )
+
+
 def test_guild_message_rejects_author_roles_from_different_guild(monkeypatch):
     """If an author Member object comes from a different guild than the
     message, the cached .roles on it must NOT be trusted — rely on the
