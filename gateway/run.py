@@ -17504,12 +17504,19 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 return groups
 
             def _track_progress_result(result) -> None:
-                if (
-                    _cleanup_progress
-                    and getattr(result, "success", False)
-                    and getattr(result, "message_id", None)
-                ):
-                    _cleanup_msg_ids.append(str(result.message_id))
+                if not _cleanup_progress or not getattr(result, "success", False):
+                    return
+                ids: list[str] = []
+                raw_response = getattr(result, "raw_response", None)
+                if isinstance(raw_response, dict):
+                    raw_ids = raw_response.get("message_ids")
+                    if isinstance(raw_ids, (list, tuple)):
+                        ids.extend(str(mid) for mid in raw_ids if mid is not None)
+                if not ids and getattr(result, "message_id", None):
+                    ids.append(str(result.message_id))
+                for mid in ids:
+                    if mid not in _cleanup_msg_ids:
+                        _cleanup_msg_ids.append(mid)
 
             async def _send_progress_text(text: str):
                 result = await adapter.send(
@@ -17665,12 +17672,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                 reply_to=_progress_reply_to,
                                 metadata=_progress_metadata,
                             )
-                            if (
-                                _cleanup_progress
-                                and getattr(_flood_result, "success", False)
-                                and getattr(_flood_result, "message_id", None)
-                            ):
-                                _cleanup_msg_ids.append(str(_flood_result.message_id))
+                            _track_progress_result(_flood_result)
                     else:
                         if can_edit:
                             # First tool: send all accumulated text as new message
@@ -17691,8 +17693,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                             )
                         if result.success and result.message_id:
                             progress_msg_id = result.message_id
-                            if _cleanup_progress:
-                                _cleanup_msg_ids.append(str(result.message_id))
+                            _track_progress_result(result)
 
                     _last_edit_ts = time.monotonic()
 

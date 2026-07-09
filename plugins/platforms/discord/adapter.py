@@ -4211,6 +4211,8 @@ class DiscordAdapter(BasePlatformAdapter):
             discord.app_commands.Choice(name="leave — leave voice channel", value="leave"),
             discord.app_commands.Choice(name="on — voice reply to voice messages", value="on"),
             discord.app_commands.Choice(name="tts — voice reply to all messages", value="tts"),
+            discord.app_commands.Choice(name="realtime — join with realtime voice", value="realtime"),
+            discord.app_commands.Choice(name="rt — join with realtime voice (alias)", value="rt"),
             discord.app_commands.Choice(name="off — text only", value="off"),
             discord.app_commands.Choice(name="status — show current mode", value="status"),
         ])

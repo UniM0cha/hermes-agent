@@ -462,7 +462,7 @@ async def test_discord_cleanup_progress_deletes_temp_bubbles_when_global_cleanup
     assert result["final_response"] == "done"
     cb = adapter.pop_post_delivery_callback(session_key)
     assert callable(cb)
-    cb()
+    await _fire_post_delivery_cb(cb)
     for _ in range(20):
         await asyncio.sleep(0.01)
         if adapter.deleted:
@@ -499,7 +499,7 @@ async def test_discord_cleanup_preserves_thread_metadata(monkeypatch, tmp_path):
     assert result["final_response"] == "done"
     cb = adapter.pop_post_delivery_callback(session_key)
     assert callable(cb)
-    cb()
+    await _fire_post_delivery_cb(cb)
     for _ in range(20):
         await asyncio.sleep(0.01)
         if adapter.deleted:
@@ -536,7 +536,7 @@ async def test_discord_cleanup_tracks_split_send_message_ids(monkeypatch, tmp_pa
     assert result["final_response"] == "done"
     cb = adapter.pop_post_delivery_callback(session_key)
     assert callable(cb)
-    cb()
+    await _fire_post_delivery_cb(cb)
     for _ in range(20):
         await asyncio.sleep(0.01)
         if len(adapter.deleted) >= 3:
