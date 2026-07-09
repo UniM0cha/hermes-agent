@@ -2462,6 +2462,11 @@ class GatewaySlashCommandsMixin:
 
         adapter = self.adapters.get(platform)
 
+        if args in {"realtime", "rt"}:
+            return await self._handle_voice_realtime_start(event)
+        if args in {"realtime off", "realtime disable", "rt off", "rt disable"}:
+            return await self._handle_voice_realtime_stop(event)
+
         if args in {"on", "enable"}:
             self._voice_mode[voice_key] = "voice_only"
             self._save_voice_modes()
@@ -2490,6 +2495,7 @@ class GatewaySlashCommandsMixin:
                 "off": t("gateway.voice.label_off"),
                 "voice_only": t("gateway.voice.label_voice_only"),
                 "all": t("gateway.voice.label_all"),
+                "realtime": "Realtime voice",
             }
             # Append voice channel info if connected
             adapter = self.adapters.get(event.source.platform)
@@ -2533,6 +2539,84 @@ class GatewaySlashCommandsMixin:
                 t("gateway.voice.help_channels") if supports_voice_channels else ""
             )
             return t("gateway.voice.help", toggle=toggle_line, channels=channels)
+
+    async def _handle_voice_realtime_start(self, event: MessageEvent) -> str:
+        """Start Discord OpenAI Realtime voice mode."""
+        adapter = self.adapters.get(event.source.platform)
+        if not hasattr(adapter, "start_realtime_voice"):
+            return "Realtime voice is only supported on Discord server voice channels."
+
+        guild_id = self._get_guild_id(event)
+        if not guild_id:
+            return "This command only works in a Discord server."
+
+        if not hasattr(adapter, "get_user_voice_channel"):
+            return "Voice channels are not supported on this platform."
+        voice_channel = await adapter.get_user_voice_channel(guild_id, event.source.user_id)
+        if not voice_channel:
+            return "You need to be in a voice channel first."
+
+        if hasattr(adapter, "_voice_input_callback"):
+            adapter._voice_input_callback = self._handle_voice_channel_input
+        if hasattr(adapter, "_on_voice_disconnect"):
+            adapter._on_voice_disconnect = self._handle_voice_timeout_cleanup
+
+        try:
+            connected = bool(hasattr(adapter, "is_in_voice_channel") and adapter.is_in_voice_channel(guild_id))
+        except Exception:
+            connected = False
+        if not connected:
+            try:
+                success = await adapter.join_voice_channel(voice_channel)
+            except Exception as e:
+                logger.warning("Failed to join voice channel for realtime: %s", e)
+                return f"Failed to join voice channel: {e}"
+            if not success:
+                return "Failed to join voice channel. Check bot permissions (Connect + Speak)."
+
+        try:
+            text_channel_id = int(event.source.chat_id)
+        except (TypeError, ValueError):
+            return "Discord text channel ID is invalid for realtime voice."
+        if hasattr(adapter, "_voice_text_channels"):
+            adapter._voice_text_channels[guild_id] = text_channel_id
+        if hasattr(adapter, "_voice_sources"):
+            adapter._voice_sources[guild_id] = event.source.to_dict()
+
+        ok, message = await adapter.start_realtime_voice(
+            guild_id, str(event.source.user_id), text_channel_id, event.source.to_dict(), self
+        )
+        if not ok:
+            return message
+
+        voice_key = self._voice_key(event.source.platform, event.source.chat_id)
+        self._voice_mode[voice_key] = "realtime"
+        self._save_voice_modes()
+        self._set_adapter_auto_tts_disabled(adapter, event.source.chat_id, disabled=True)
+        self._set_adapter_auto_tts_enabled(adapter, event.source.chat_id, enabled=False)
+        return message or "Realtime voice started."
+
+    async def _handle_voice_realtime_stop(self, event: MessageEvent) -> str:
+        """Stop Discord Realtime voice while optionally keeping normal VC mode."""
+        adapter = self.adapters.get(event.source.platform)
+        guild_id = self._get_guild_id(event)
+        if not guild_id or not hasattr(adapter, "stop_realtime_voice"):
+            return "Realtime voice is not active."
+        await adapter.stop_realtime_voice(guild_id)
+        try:
+            connected = bool(hasattr(adapter, "is_in_voice_channel") and adapter.is_in_voice_channel(guild_id))
+        except Exception:
+            connected = False
+        voice_key = self._voice_key(event.source.platform, event.source.chat_id)
+        if connected:
+            self._voice_mode[voice_key] = "all"
+            self._set_adapter_auto_tts_disabled(adapter, event.source.chat_id, disabled=False)
+            self._set_adapter_auto_tts_enabled(adapter, event.source.chat_id, enabled=True)
+        else:
+            self._voice_mode[voice_key] = "off"
+            self._set_adapter_auto_tts_disabled(adapter, event.source.chat_id, disabled=True)
+        self._save_voice_modes()
+        return "Realtime voice stopped."
 
     async def _handle_rollback_command(self, event: MessageEvent) -> str:
         """Handle /rollback command — list or restore filesystem checkpoints."""

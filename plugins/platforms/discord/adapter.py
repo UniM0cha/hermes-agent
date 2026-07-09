@@ -1581,18 +1581,15 @@ class DiscordAdapter(BasePlatformAdapter):
         if retry_after_until > now:
             remaining = max(1, int(retry_after_until - now))
             return f"Discord asked us to wait before syncing slash commands; retry in {remaining}s"
-        if entry.get("fingerprint") == fingerprint and entry.get("last_success_at"):
+        last_success = float(entry.get("last_success_at") or 0)
+        last_attempt = float(entry.get("last_attempt_at") or 0)
+        if entry.get("fingerprint") == fingerprint and last_success and last_success >= last_attempt:
             return "same slash-command fingerprint already synced"
         return None
 
     def _record_command_sync_attempt(self, app_id: Any, fingerprint: str) -> None:
         state = self._read_command_sync_state()
         state[self._command_sync_state_key(app_id)] = {
-            **(
-                state.get(self._command_sync_state_key(app_id))
-                if isinstance(state.get(self._command_sync_state_key(app_id)), dict)
-                else {}
-            ),
             "fingerprint": fingerprint,
             "last_attempt_at": time.time(),
         }
@@ -1616,10 +1613,13 @@ class DiscordAdapter(BasePlatformAdapter):
 
     def _record_command_sync_success(self, app_id: Any, fingerprint: str, summary: dict) -> None:
         state = self._read_command_sync_state()
+        now = time.time()
+        entry = state.get(self._command_sync_state_key(app_id))
+        last_attempt_at = (entry or {}).get("last_attempt_at") if isinstance(entry, dict) else None
         state[self._command_sync_state_key(app_id)] = {
             "fingerprint": fingerprint,
-            "last_attempt_at": time.time(),
-            "last_success_at": time.time(),
+            "last_attempt_at": last_attempt_at or now,
+            "last_success_at": now,
             "summary": summary,
         }
         self._write_command_sync_state(state)
@@ -5491,6 +5491,7 @@ class DiscordAdapter(BasePlatformAdapter):
         name: str,
         *,
         only_if_current_name: Optional[str] = None,
+        reason: str = "Hermes semantic session title",
     ) -> bool:
         """Best-effort Discord thread rename.
 
@@ -5536,7 +5537,7 @@ class DiscordAdapter(BasePlatformAdapter):
         if edit is None:
             return False
         try:
-            await edit(name=cleaned, reason="Hermes semantic session title")
+            await edit(name=cleaned, reason=reason)
             logger.info(
                 "[%s] Renamed Discord thread %s from %r to %r",
                 self.name, thread_id, current_name, cleaned,
@@ -5630,6 +5631,7 @@ class DiscordAdapter(BasePlatformAdapter):
         name: str,
         *,
         only_if_current_name: Optional[str] = None,
+        reason: str = "Hermes semantic session title",
     ) -> bool:
         """Best-effort Discord thread rename.
 
@@ -5672,7 +5674,7 @@ class DiscordAdapter(BasePlatformAdapter):
         if edit is None:
             return False
         try:
-            await edit(name=cleaned, reason="Hermes semantic session title")
+            await edit(name=cleaned, reason=reason)
             logger.info(
                 "[%s] Renamed Discord thread %s from %r to %r",
                 self.name, thread_id, current_name, cleaned,
@@ -6372,10 +6374,9 @@ class DiscordAdapter(BasePlatformAdapter):
         if not is_thread and not isinstance(message.channel, discord.DMChannel):
             no_thread_channels_raw = os.getenv("DISCORD_NO_THREAD_CHANNELS", "")
             no_thread_channels = {ch.strip() for ch in no_thread_channels_raw.split(",") if ch.strip()}
-            # Free-response only removes the mention gate; keep auto-threading so
-            # always-on channels still isolate conversations unless explicitly
-            # listed in DISCORD_NO_THREAD_CHANNELS.
-            skip_thread = bool(channel_keys & no_thread_channels)
+            # Free-response channels are intentionally inline/no-thread channels:
+            # they act like normal always-on rooms rather than task isolation lanes.
+            skip_thread = is_free_channel or bool(channel_keys & no_thread_channels)
             auto_thread = os.getenv("DISCORD_AUTO_THREAD", "true").lower() in {"true", "1", "yes"}
             is_reply_message = getattr(message, "type", None) == discord.MessageType.reply
             if auto_thread and not skip_thread and not is_voice_linked_channel and not is_reply_message:
@@ -6425,6 +6426,8 @@ class DiscordAdapter(BasePlatformAdapter):
 
         all_attachments = list(message.attachments) + snapshot_attachments + referenced_attachments
 
+        native_voice_message = bool(getattr(getattr(message, "flags", None), "voice", False) is True)
+
         # Determine message type
         msg_type = MessageType.TEXT
         if normalized_content.startswith("/"):
@@ -6440,7 +6443,7 @@ class DiscordAdapter(BasePlatformAdapter):
                     elif att.content_type.startswith("video/"):
                         msg_type = MessageType.VIDEO
                     elif att.content_type.startswith("audio/"):
-                        if self._is_discord_voice_message_attachment(att):
+                        if native_voice_message or self._is_discord_voice_message_attachment(att):
                             msg_type = MessageType.VOICE
                         else:
                             msg_type = MessageType.AUDIO

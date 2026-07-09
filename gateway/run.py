@@ -3226,7 +3226,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         if not isinstance(data, dict):
             return {}
 
-        valid_modes = {"off", "voice_only", "all"}
+        valid_modes = {"off", "voice_only", "all", "realtime"}
         result = {}
         for chat_id, mode in data.items():
             if mode not in valid_modes:
@@ -13608,6 +13608,91 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 logger.debug("Discord semantic thread rename failed", exc_info=True)
 
         future.add_done_callback(_log_rename_failure)
+
+    def _is_discord_thread_lane(self, source: SessionSource) -> bool:
+        """True when a gateway source represents an existing Discord thread."""
+        return (
+            source.platform == Platform.DISCORD
+            and source.chat_type == "thread"
+            and bool(source.thread_id or source.chat_id)
+        )
+
+    async def _rename_discord_thread_for_session_title(
+        self,
+        source: SessionSource,
+        session_id: str,
+        title: str,
+    ) -> None:
+        """Best-effort rename of a Discord thread when Hermes auto-titles a session."""
+        if not await asyncio.to_thread(self._is_discord_thread_lane, source):
+            return
+        adapter = self.adapters.get(source.platform) if getattr(self, "adapters", None) else None
+        if adapter is None:
+            return
+        rename_thread = getattr(adapter, "rename_thread", None)
+        if rename_thread is None:
+            return
+        thread_id = str(source.thread_id or source.chat_id or "").strip()
+        if not thread_id:
+            return
+        try:
+            await rename_thread(
+                thread_id=thread_id,
+                name=self._sanitize_discord_thread_title(title),
+                reason="Hermes auto-generated session title",
+            )
+        except Exception:
+            logger.debug(
+                "Failed to rename Discord thread for auto-generated title (session %s)",
+                session_id,
+                exc_info=True,
+            )
+
+    def _schedule_discord_thread_title_rename(
+        self,
+        source: SessionSource,
+        session_id: str,
+        title: str,
+    ) -> None:
+        """Schedule a Discord thread rename from the auto-title background thread."""
+        if not title or not self._is_discord_thread_lane(source):
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = getattr(self, "_gateway_loop", None)
+        if loop is None or loop.is_closed():
+            return
+        try:
+            copied_source = dataclasses.replace(source)
+        except Exception:
+            copied_source = source
+        future = safe_schedule_threadsafe(
+            self._rename_discord_thread_for_session_title(copied_source, session_id, title),
+            loop,
+            logger=logger,
+            log_message="Discord thread title rename failed to schedule",
+        )
+        if future is None:
+            return
+
+        def _log_rename_failure(fut) -> None:
+            try:
+                fut.result()
+            except Exception:
+                logger.debug("Discord thread title rename failed", exc_info=True)
+
+        future.add_done_callback(_log_rename_failure)
+
+    def _auto_title_callback_for_source(self, source: SessionSource, session_id: str):
+        """Return a platform-specific title callback for auto-title side effects."""
+        if self._is_telegram_topic_lane(source):
+            return lambda title: self._schedule_telegram_topic_title_rename(source, session_id, title)
+        if self._is_discord_thread_lane(source):
+            if self._is_discord_auto_thread_lane(source):
+                return lambda title: self._schedule_discord_semantic_thread_rename(source, session_id, title)
+            return lambda title: self._schedule_discord_thread_title_rename(source, session_id, title)
+        return None
 
     async def _rename_telegram_topic_for_session_title(
         self,

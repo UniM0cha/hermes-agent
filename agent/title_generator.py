@@ -23,6 +23,8 @@ _TITLE_PROMPT = (
     "Generate a short, descriptive title (3-7 words) for a conversation that starts with the "
     "following exchange. The title should capture the main topic or intent. "
     "Write the title in the same language the user is writing in. "
+    "Prefer natural Korean titles when reasonable. If the exchange is clearly best represented in "
+    "another language, use that language instead. "
     "Return ONLY the title text, nothing else. No quotes, no punctuation at the end, no prefixes."
 )
 
