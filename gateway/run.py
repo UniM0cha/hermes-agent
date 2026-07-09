@@ -13686,12 +13686,21 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
     def _auto_title_callback_for_source(self, source: SessionSource, session_id: str):
         """Return a platform-specific title callback for auto-title side effects."""
-        if self._is_telegram_topic_lane(source):
-            return lambda title: self._schedule_telegram_topic_title_rename(source, session_id, title)
+        is_telegram_topic = (
+            source.platform == Platform.TELEGRAM
+            and source.chat_type == "private"
+            and bool(source.chat_id)
+            and bool(source.thread_id)
+        )
+        if is_telegram_topic:
+            schedule_telegram = self._schedule_telegram_topic_title_rename
+            return lambda title: schedule_telegram(source, session_id, title)
         if self._is_discord_thread_lane(source):
             if self._is_discord_auto_thread_lane(source):
-                return lambda title: self._schedule_discord_semantic_thread_rename(source, session_id, title)
-            return lambda title: self._schedule_discord_thread_title_rename(source, session_id, title)
+                schedule_discord_auto = self._schedule_discord_semantic_thread_rename
+                return lambda title: schedule_discord_auto(source, session_id, title)
+            schedule_discord = self._schedule_discord_thread_title_rename
+            return lambda title: schedule_discord(source, session_id, title)
         return None
 
     async def _rename_telegram_topic_for_session_title(

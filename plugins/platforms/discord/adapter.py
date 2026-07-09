@@ -7066,11 +7066,10 @@ def _define_discord_view_classes() -> None:
                 embed.color = color
                 embed.set_footer(text=f"{label} by {interaction.user.display_name}")
 
-            # Disable all buttons
-            for child in self.children:
-                child.disabled = True
-
-            await interaction.response.edit_message(embed=embed, view=self)
+            # Remove the component row entirely after resolution. Disabled
+            # buttons remain visually clickable-looking on some Discord clients
+            # and can confuse users after the queue has already been resolved.
+            await interaction.response.edit_message(embed=embed, view=None)
 
             # Unblock the waiting agent thread via the gateway approval queue
             try:

@@ -235,7 +235,7 @@ async def test_exec_approval_resolution_removes_buttons(monkeypatch):
     visible under the approval card.  The resolved prompt should keep the
     footer, but remove the component row entirely with view=None.
     """
-    view = ExecApprovalView(session_key="sess-1", allowed_user_ids=set())
+    view = ExecApprovalView(session_key="sess-1", allowed_user_ids={"11111"})
     response = SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock())
     embed = SimpleNamespace(color=None, set_footer=lambda **_: None)
     interaction = SimpleNamespace(

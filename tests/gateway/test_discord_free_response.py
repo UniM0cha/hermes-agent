@@ -453,8 +453,8 @@ async def test_discord_auto_thread_enabled_by_default(adapter, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_discord_free_response_channel_still_auto_threads(adapter, monkeypatch):
-    """Free-response channels remove the mention gate, but still open threads."""
+async def test_discord_free_response_channel_replies_inline(adapter, monkeypatch):
+    """Free-response channels remove the mention gate and reply inline."""
     monkeypatch.delenv("DISCORD_AUTO_THREAD", raising=False)
     monkeypatch.setenv("DISCORD_REQUIRE_MENTION", "true")
     monkeypatch.setenv("DISCORD_FREE_RESPONSE_CHANNELS", "123")
@@ -466,12 +466,11 @@ async def test_discord_free_response_channel_still_auto_threads(adapter, monkeyp
 
     await adapter._handle_message(message)
 
-    adapter._auto_create_thread.assert_awaited_once()
+    adapter._auto_create_thread.assert_not_awaited()
     adapter.handle_message.assert_awaited_once()
     event = adapter.handle_message.await_args.args[0]
     assert event.text == "hello without mention"
-    assert event.source.chat_type == "thread"
-    assert event.source.thread_id == "999"
+    assert event.source.chat_type == "group"
 
 
 @pytest.mark.asyncio
