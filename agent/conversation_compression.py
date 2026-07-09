@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 # status as ``kind="compacting"`` (tui_gateway/server.py::_status_update), so
 # drivers like the desktop app can show an explicit "Summarizing…" indicator
 # instead of the transcript appearing to silently reset. Keep the marker phrase
-# intact if you reword COMPACTION_STATUS.
+from agent.i18n import t
+
+# User-facing status emitted before preflight compression. Desktop/web UI
 COMPACTION_STATUS_MARKER = "Compacting context"
 COMPACTION_STATUS = (
     f"🗜️ {COMPACTION_STATUS_MARKER} — summarizing earlier conversation so I can continue..."
@@ -678,9 +680,11 @@ def compress_context(
         if summary_error:
             if getattr(agent, "_last_compression_summary_warning", None) != summary_error:
                 agent._last_compression_summary_warning = summary_error
+                display_error = summary_error
+                if "Responses stream exceeded 300.0s total timeout" in display_error:
+                    display_error = "총 300.0초 제한 시간 초과"
                 agent._emit_warning(
-                    f"⚠ Compression summary failed: {summary_error}. "
-                    "Inserted a fallback context marker."
+                    t("agent.compression.summary_warning", error=display_error)
                 )
         else:
             # No hard failure — but did the configured aux model error out

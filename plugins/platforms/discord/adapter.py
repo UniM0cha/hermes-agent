@@ -394,6 +394,12 @@ class VoiceReceiver:
         # Debug logging counter (instance-level to avoid cross-instance races)
         self._packet_debug_count = 0
 
+        # Optional realtime streaming tap. When set, decoded PCM is delivered
+        # immediately before utterance buffering/STT. Realtime mode can disable
+        # utterance buffering to avoid duplicate local STT processing.
+        self._pcm_stream_callback: Optional[Callable[[int, int, bytes], None]] = None
+        self._buffer_utterances = True
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -429,6 +435,24 @@ class VoiceReceiver:
 
     def resume(self):
         self._paused = False
+
+    def set_pcm_stream_callback(
+        self,
+        callback: Optional[Callable[[int, int, bytes], None]],
+        *,
+        buffer_utterances: bool = True,
+    ) -> None:
+        """Install an optional decoded-PCM streaming callback.
+
+        ``callback`` receives ``(ssrc, user_id, pcm_48k_stereo)``. When
+        ``buffer_utterances`` is False, decoded audio is not appended to the
+        normal silence-detected STT buffers.
+        """
+        with self._lock:
+            self._pcm_stream_callback = callback
+            self._buffer_utterances = buffer_utterances
+            if callback is None:
+                self._buffer_utterances = True
 
     # ------------------------------------------------------------------
     # SSRC -> user_id mapping via SPEAKING opcode hook
@@ -602,8 +626,10 @@ class VoiceReceiver:
             if ssrc not in self._decoders:
                 self._decoders[ssrc] = discord.opus.Decoder()
             pcm = self._decoders[ssrc].decode(decrypted)
+            self._emit_pcm_stream_callback(ssrc, pcm)
             with self._lock:
-                self._buffers[ssrc].extend(pcm)
+                if self._buffer_utterances:
+                    self._buffers[ssrc].extend(pcm)
                 self._last_packet_time[ssrc] = time.monotonic()
         except Exception as e:
             with self._lock:
@@ -644,6 +670,27 @@ class VoiceReceiver:
         except Exception:
             pass
         return 0
+
+    def _emit_pcm_stream_callback(self, ssrc: int, pcm: bytes) -> None:
+        """Deliver decoded PCM to the optional realtime stream callback."""
+        with self._lock:
+            user_id = self._ssrc_to_user.get(ssrc, 0)
+            callback = self._pcm_stream_callback
+        if not user_id:
+            user_id = self._infer_user_for_ssrc(ssrc)
+        if callback and user_id:
+            try:
+                callback(ssrc, int(user_id), pcm)
+            except Exception:
+                logger.warning("PCM stream callback failed for SSRC %s", ssrc, exc_info=True)
+
+    def _handle_decoded_pcm(self, ssrc: int, pcm: bytes) -> None:
+        """Route decoded PCM to realtime callback and/or utterance buffer."""
+        self._emit_pcm_stream_callback(ssrc, pcm)
+        with self._lock:
+            if self._buffer_utterances:
+                self._buffers[ssrc].extend(pcm)
+            self._last_packet_time[ssrc] = time.monotonic()
 
     def check_silence(self) -> list:
         """Return list of (user_id, pcm_bytes) for completed utterances."""

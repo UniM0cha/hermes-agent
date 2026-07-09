@@ -2013,6 +2013,7 @@ This compaction should PRIORITISE preserving all information related to the focu
             self._previous_summary = summary
             self._clear_compression_failure_cooldown()
             self._summary_model_fallen_back = False
+            self._streaming_closed_summary_retries = 0
             self._last_summary_error = None
             self._last_summary_auth_failure = False
             self._last_summary_network_failure = False
@@ -2141,6 +2142,14 @@ This compaction should PRIORITISE preserving all information related to the focu
             ):
                 self._fallback_to_main_for_compression(e, "failed")
                 return self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+
+            if _is_streaming_closed:
+                retries = int(getattr(self, "_streaming_closed_summary_retries", 0))
+                if retries < 2:
+                    self._streaming_closed_summary_retries = retries + 1
+                    time.sleep(2 if retries == 0 else 5)
+                    return self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+                self._streaming_closed_summary_retries = 0
 
             # Transient errors (timeout, rate limit, network, JSON decode,
             # streaming premature-close) — shorter cooldown for JSON decode and

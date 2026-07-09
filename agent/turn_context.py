@@ -28,6 +28,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from agent.i18n import t
+
 from agent.conversation_compression import conversation_history_after_compression
 from agent.iteration_budget import IterationBudget
 from agent.model_metadata import (
@@ -426,9 +428,11 @@ def build_turn_context(
                 f"{_compressor.context_length:,}",
             )
             agent._emit_status(
-                f"📦 Preflight compression: ~{_preflight_tokens:,} tokens "
-                f">= {_compressor.threshold_tokens:,} threshold. "
-                "This may take a moment."
+                t(
+                    "agent.compression.preflight_status",
+                    tokens=f"{_preflight_tokens:,}",
+                    threshold=f"{_compressor.threshold_tokens:,}",
+                )
             )
             for _pass in range(3):
                 _orig_len = len(messages)

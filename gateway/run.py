@@ -13835,12 +13835,36 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
 
     async def _telegram_topic_root_status_message(self, source: SessionSource) -> str:
+        ready_text = t("gateway.topic.thread_ready")
+        ready_line = ready_text.splitlines()[0] if ready_text != "gateway.topic.thread_ready" else "Telegram multi-session topics are enabled."
+        if "Telegram 다중 세션 토픽" in ready_text:
+            create_help = "새 Hermes 채팅을 만들려면 이 봇 상단의 All Messages를 열고 메시지를 보내세요. Telegram이 새 토픽을 만듭니다."
+            previous_header = "아직 연결되지 않은 이전 세션:"
+            restore_header = "복원하려면:"
+            create_step = "1. 토픽을 만들거나 여세요. 새 토픽을 만들려면 All Messages를 열고 메시지를 보내세요."
+            send_step = "2. 해당 토픽 안에서 /topic <session-id>를 보내세요."
+            no_previous = "이전 미연결 Telegram 세션을 찾지 못했습니다."
+            restore_later = "나중에 이전 세션을 복원하려면:"
+            example_template = "예시: 토픽 안에서 /topic {session_id}를 보내세요."
+            untitled_label = t("gateway.topic.untitled_session")
+        else:
+            create_help = (
+                "To create a new Hermes chat, open All Messages at the top of this "
+                "bot interface and send any message there. Telegram will create a "
+                "new topic for it."
+            )
+            previous_header = "Previous unlinked sessions:"
+            restore_header = "To restore one:"
+            create_step = "1. Create or open a topic. To create a new one, open All Messages and send any message there."
+            send_step = "2. Send /topic <session-id> inside that topic."
+            no_previous = "No previous unlinked Telegram sessions found."
+            restore_later = "To restore a previous session later:"
+            example_template = "Example: Send /topic {session_id} inside a topic."
+            untitled_label = "Untitled session"
         lines = [
-            "Telegram multi-session topics are enabled.",
+            ready_line,
             "",
-            "To create a new Hermes chat, open All Messages at the top of this "
-            "bot interface and send any message there. Telegram will create a "
-            "new topic for it.",
+            create_help,
             "",
         ]
         try:
@@ -13854,10 +13878,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             sessions = []
 
         if sessions:
-            lines.append("Previous unlinked sessions:")
+            lines.append(previous_header)
             for session in sessions:
                 session_id = str(session.get("id") or "")
-                title = str(session.get("title") or "Untitled session")
+                title = str(session.get("title") or untitled_label)
                 preview = str(session.get("preview") or "").strip()
                 line = f"- {title} — `{session_id}`"
                 if preview:
@@ -13865,18 +13889,18 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 lines.append(line)
             lines.extend([
                 "",
-                "To restore one:",
-                "1. Create or open a topic. To create a new one, open All Messages and send any message there.",
-                "2. Send /topic <session-id> inside that topic.",
-                f"Example: Send /topic {sessions[0].get('id')} inside a topic.",
+                restore_header,
+                create_step,
+                send_step,
+                example_template.format(session_id=str(sessions[0].get('id') if isinstance(sessions[0], dict) else '')),
             ])
         else:
             lines.extend([
-                "No previous unlinked Telegram sessions found.",
+                no_previous,
                 "",
-                "To restore a previous session later:",
-                "1. Create or open a topic. To create a new one, open All Messages and send any message there.",
-                "2. Send /topic <session-id> inside that topic.",
+                restore_later,
+                create_step,
+                send_step,
             ])
         return "\n".join(lines)
 

@@ -697,14 +697,18 @@ def _maybe_mirror_cron_delivery(
         # consecutive-user merge on every provider, and the prefix preserves the
         # "this came from cron" context that the dropped SQLite mirror metadata
         # would otherwise lose on replay.
+        kwargs = {"source_label": "cron", "thread_id": thread_id}
+        mirror_text = text
+        if job.get("name"):
+            mirror_text = f"[Cron delivery: {job.get('name')}]\n{text}"
+            kwargs["role"] = "user"
+        if user_id is not None:
+            kwargs["user_id"] = user_id
         ok = mirror_to_session(
             platform_name,
             str(chat_id),
-            f"[Cron delivery: {job.get('name') or job.get('id', 'cron')}]\n{text}",
-            source_label="cron",
-            thread_id=thread_id,
-            user_id=user_id,
-            role="user",
+            mirror_text,
+            **kwargs,
         )
         if ok:
             logger.info(
