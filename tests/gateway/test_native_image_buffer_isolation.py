@@ -14,7 +14,7 @@ def _make_runner() -> GatewayRunner:
     runner.adapters = {}
     runner._model = "openai/gpt-4.1-mini"
     runner._base_url = None
-    runner._decide_image_input_mode = lambda: "native"
+    runner._decide_image_input_mode = lambda **_: "native"
     return runner
 
 
@@ -115,3 +115,20 @@ def test_media_placeholder_uses_per_attachment_mime_for_mixed_photo_events():
         "[User sent an image: /tmp/screenshot.png]\n"
         "[User sent a file: /tmp/message.txt]"
     )
+
+
+@pytest.mark.asyncio
+async def test_native_image_buffer_uses_resolved_session_key_when_provided():
+    runner = _make_runner()
+    source = _source("chat-a")
+    runner._session_key_for_source = lambda _source: "source-derived-key"
+
+    await runner._prepare_inbound_message_text(
+        event=_image_event(source, "/tmp/a.png"),
+        source=source,
+        history=[],
+        session_key="canonical-session-key",
+    )
+
+    assert runner._consume_pending_native_image_paths("source-derived-key") == []
+    assert runner._consume_pending_native_image_paths("canonical-session-key") == ["/tmp/a.png"]
