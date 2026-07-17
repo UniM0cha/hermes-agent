@@ -1422,25 +1422,32 @@ class DiscordAdapter(BasePlatformAdapter):
         self._liveness_task = None
 
     async def cancel_background_tasks(self) -> None:
-        """Cancel background tasks, but first flush any pending text-batch sends.
+        """Let Discord message work finish briefly before cancelling it.
 
-        The base-class implementation only cancels tasks in self._background_tasks.
-        Discord keeps its own _pending_text_batch_tasks dict for the message-merge
-        logic, and those tasks are NOT in _background_tasks. On shutdown/restart
-        this caused a race where in-flight response deliveries were cancelled before
-        Discord had a chance to actually send them, resulting in silent dropped
-        messages visible to the user as tool-log-only replies with no text.
+        The base implementation cancels every task in ``_background_tasks``.
+        That set includes the full inbound-message pipeline, including the final
+        awaited ``channel.send()``. During a graceful gateway restart the agent
+        run can leave the drain tracker just after producing its final response,
+        while Discord is still sending that response. Cancelling immediately at
+        that boundary silently drops the completion message.
 
-        Fix: await all pending text-batch tasks before delegating to the base
-        cancel. The flush deadline is clamped below the gateway's per-adapter
-        disconnect budget (``HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT``, default
-        5s) so the gateway's outer ``wait_for`` can't hard-cancel us mid-flush —
-        we cancel our own stragglers cleanly inside the budget instead.
+        Discord also keeps debounce tasks in ``_pending_text_batch_tasks``.
+        Await both task sets together within the adapter disconnect budget, then
+        let the base implementation cancel only genuine stragglers and clear all
+        tracking state.
         """
-        pending = list(self._pending_text_batch_tasks.values())
+        current = asyncio.current_task()
+        pending = {
+            task
+            for task in (
+                *self._pending_text_batch_tasks.values(),
+                *self._background_tasks,
+            )
+            if task is not current and not task.done()
+        }
         if pending:
             logger.info(
-                "[%s] Flushing %d pending text-batch task(s) before shutdown",
+                "[%s] Draining %d pending message task(s) before shutdown",
                 self.name, len(pending),
             )
             try:
@@ -1450,7 +1457,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    "[%s] Text-batch flush timed out; cancelling remaining tasks",
+                    "[%s] Pending message drain timed out; cancelling remaining tasks",
                     self.name,
                 )
                 for task in pending:
