@@ -73,3 +73,34 @@ async def test_cancel_background_tasks_awaits_pending_text_batch_before_clearing
     assert task.done()
     assert adapter._pending_text_batch_tasks == {}
     assert adapter._pending_text_batches == {}
+
+
+@pytest.mark.asyncio
+async def test_cancel_background_tasks_awaits_inflight_response_delivery():
+    """A final Discord send must finish before restart teardown cancels tasks."""
+    adapter = DiscordAdapter(PlatformConfig(enabled=True, token="fake-token"))
+    delivery_started = asyncio.Event()
+    allow_delivery = asyncio.Event()
+    delivery_finished = asyncio.Event()
+
+    async def inflight_delivery():
+        delivery_started.set()
+        await allow_delivery.wait()
+        delivery_finished.set()
+
+    task = asyncio.create_task(inflight_delivery())
+    adapter._background_tasks.add(task)
+    await delivery_started.wait()
+
+    shutdown_task = asyncio.create_task(adapter.cancel_background_tasks())
+    await asyncio.sleep(0)
+
+    assert not task.cancelled()
+    assert not shutdown_task.done()
+
+    allow_delivery.set()
+    await shutdown_task
+
+    assert delivery_finished.is_set()
+    assert task.done()
+    assert adapter._background_tasks == set()

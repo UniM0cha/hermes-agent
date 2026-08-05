@@ -1751,25 +1751,32 @@ class DiscordAdapter(BasePlatformAdapter):
             setattr(self, task_name, None)
 
     async def cancel_background_tasks(self) -> None:
-        """Cancel background tasks, but first flush any pending text-batch sends.
+        """Let Discord message work finish briefly before cancelling it.
 
-        The base-class implementation only cancels tasks in self._background_tasks.
-        Discord keeps its own _pending_text_batch_tasks dict for the message-merge
-        logic, and those tasks are NOT in _background_tasks. On shutdown/restart
-        this caused a race where in-flight response deliveries were cancelled before
-        Discord had a chance to actually send them, resulting in silent dropped
-        messages visible to the user as tool-log-only replies with no text.
+        The base implementation cancels every task in ``_background_tasks``.
+        That set includes the full inbound-message pipeline, including the final
+        awaited ``channel.send()``. During a graceful gateway restart the agent
+        run can leave the drain tracker just after producing its final response,
+        while Discord is still sending that response. Cancelling immediately at
+        that boundary silently drops the completion message.
 
-        Fix: await all pending text-batch tasks before delegating to the base
-        cancel. The flush deadline is clamped below the gateway's per-adapter
-        disconnect budget (``HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT``, default
-        5s) so the gateway's outer ``wait_for`` can't hard-cancel us mid-flush —
-        we cancel our own stragglers cleanly inside the budget instead.
+        Discord also keeps debounce tasks in ``_pending_text_batch_tasks``.
+        Await both task sets together within the adapter disconnect budget, then
+        let the base implementation cancel only genuine stragglers and clear all
+        tracking state.
         """
-        pending = list(self._pending_text_batch_tasks.values())
+        current = asyncio.current_task()
+        pending = {
+            task
+            for task in (
+                *self._pending_text_batch_tasks.values(),
+                *self._background_tasks,
+            )
+            if task is not current and not task.done()
+        }
         if pending:
             logger.info(
-                "[%s] Flushing %d pending text-batch task(s) before shutdown",
+                "[%s] Draining %d pending message task(s) before shutdown",
                 self.name, len(pending),
             )
             try:
@@ -1779,7 +1786,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 )
             except asyncio.TimeoutError:
                 logger.warning(
-                    "[%s] Text-batch flush timed out; cancelling remaining tasks",
+                    "[%s] Pending message drain timed out; cancelling remaining tasks",
                     self.name,
                 )
                 for task in pending:
@@ -7892,16 +7899,15 @@ class DiscordAdapter(BasePlatformAdapter):
                 if not self._self_is_explicitly_mentioned(message) and not mention_prefix:
                     return False
         # Auto-thread: when enabled, automatically create a thread for every
-        # @mention in a text channel so each conversation is isolated (like Slack).
+        # handled message in a text channel so each conversation is isolated
+        # (like Slack). Free-response channels only relax the @mention gate;
+        # they still auto-thread unless explicitly listed in no_thread_channels.
         # Messages already inside threads or DMs are unaffected.
-        # no_thread_channels: channels where bot responds directly without thread.
         auto_threaded_channel = None
         if not is_thread and not isinstance(message.channel, discord.DMChannel):
             no_thread_channels_raw = os.getenv("DISCORD_NO_THREAD_CHANNELS", "")
             no_thread_channels = {ch.strip() for ch in no_thread_channels_raw.split(",") if ch.strip()}
-            # Free-response channels are intentionally inline/no-thread channels:
-            # they act like normal always-on rooms rather than task isolation lanes.
-            skip_thread = is_free_channel or bool(channel_keys & no_thread_channels)
+            skip_thread = bool(channel_keys & no_thread_channels)
             auto_thread = os.getenv("DISCORD_AUTO_THREAD", "true").lower() in {"true", "1", "yes"}
             is_reply_message = getattr(message, "type", None) == discord.MessageType.reply
             if auto_thread and not skip_thread and not is_voice_linked_channel and not is_reply_message:

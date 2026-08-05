@@ -272,6 +272,7 @@ async def test_discord_can_still_require_mentions_when_enabled(adapter, monkeypa
 async def test_discord_free_response_channel_overrides_mention_requirement(adapter, monkeypatch):
     monkeypatch.setenv("DISCORD_REQUIRE_MENTION", "true")
     monkeypatch.setenv("DISCORD_FREE_RESPONSE_CHANNELS", "789,999")
+    monkeypatch.setenv("DISCORD_AUTO_THREAD", "false")
 
     message = make_message(channel=FakeTextChannel(channel_id=789), content="allowed without mention")
 
@@ -286,6 +287,7 @@ async def test_discord_free_response_channel_overrides_mention_requirement(adapt
 async def test_discord_free_response_channel_can_come_from_config_extra(adapter, monkeypatch):
     monkeypatch.delenv("DISCORD_REQUIRE_MENTION", raising=False)
     monkeypatch.delenv("DISCORD_FREE_RESPONSE_CHANNELS", raising=False)
+    monkeypatch.setenv("DISCORD_AUTO_THREAD", "false")
     adapter.config.extra["free_response_channels"] = ["789", "999"]
 
     message = make_message(channel=FakeTextChannel(channel_id=789), content="allowed from config")
@@ -453,8 +455,8 @@ async def test_discord_auto_thread_enabled_by_default(adapter, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_discord_free_response_channel_replies_inline(adapter, monkeypatch):
-    """Free-response channels remove the mention gate and reply inline."""
+async def test_discord_free_response_channel_still_auto_threads(adapter, monkeypatch):
+    """Free-response channels remove the mention gate, but still open threads."""
     monkeypatch.delenv("DISCORD_AUTO_THREAD", raising=False)
     monkeypatch.setenv("DISCORD_REQUIRE_MENTION", "true")
     monkeypatch.setenv("DISCORD_FREE_RESPONSE_CHANNELS", "123")
@@ -466,11 +468,12 @@ async def test_discord_free_response_channel_replies_inline(adapter, monkeypatch
 
     await adapter._handle_message(message)
 
-    adapter._auto_create_thread.assert_not_awaited()
+    adapter._auto_create_thread.assert_awaited_once()
     adapter.handle_message.assert_awaited_once()
     event = adapter.handle_message.await_args.args[0]
     assert event.text == "hello without mention"
-    assert event.source.chat_type == "group"
+    assert event.source.chat_type == "thread"
+    assert event.source.thread_id == "999"
 
 
 @pytest.mark.asyncio
