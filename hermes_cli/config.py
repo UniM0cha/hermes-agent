@@ -976,6 +976,13 @@ DEFAULT_CONFIG = {
         # Set a positive value in config.yaml only if you explicitly want a
         # grace window on /restart (and keep it well under TimeoutStopSec).
         "restart_drain_timeout": 0,
+        # In-band restart wait-for-idle timeout (issue #77184). Distinct from
+        # restart_drain_timeout, which is the force-interrupt budget once
+        # stop() is running. /restart, SIGUSR1, and self-restart from a
+        # child CLI wait for active turns to finish before stop() begins;
+        # this caps how long that wait can run. Must stay short under
+        # systemd TimeoutStopSec. Default 1800s matches agent.gateway_timeout.
+        "restart_after_turn_timeout": 1800,
         # Max app-level retry attempts for API errors (connection drops,
         # provider timeouts, 5xx, etc.) before the agent surfaces the
         # failure.  The OpenAI SDK already does its own low-level retries
