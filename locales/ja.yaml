@@ -28,6 +28,22 @@ approval:
       pipe_to_interpreter:
         title: 'Pipe to interpreter: git | python3'
         description: Command pipes output from 'git' directly to interpreter 'python3'. Downloaded content will be executed without inspection.
+  dangerous_header: "⚠️  危険なコマンド: {description}"
+  choose_long:     "      [o]今回のみ  |  [s]セッション中  |  [a]常に許可  |  [d]拒否"
+  choose_short:    "      [o]今回のみ  |  [s]セッション中  |  [d]拒否"
+  prompt_long:     "      選択 [o/s/a/D]: "
+  prompt_short:    "      選択 [o/s/D]: "
+  choose_smart_deny: "      [o]今回のみ  |  [d]拒否"
+  prompt_smart_deny: "      選択 [o/D]: "
+  smart_deny_once_inputs: "o,once"
+  smart_deny_deny_inputs: "d,deny"
+  timeout:         "      ⏱ タイムアウト — コマンドを拒否しました"
+  allowed_once:    "      ✓ 今回のみ許可"
+  allowed_session: "      ✓ このセッション中は許可"
+  allowed_always:  "      ✓ 永続的な許可リストに追加"
+  denied:          "      ✗ 拒否しました"
+  cancelled:       "      ✗ キャンセルしました"
+  blocklist_message: "このコマンドは無条件ブロックリストに含まれており、承認できません。"
 gateway:
   approval_expired: ⚠️ 承認の有効期限が切れました（エージェントはもう待機していません）。エージェントに再試行を依頼してください。
   draining: ⏳ 再起動前に {count} 個のアクティブエージェントの終了を待っています...
@@ -63,6 +79,16 @@ gateway:
     none: アクティブなエージェントや実行中のタスクはありません。
     state_starting: 起動中
     state_running: 実行中
+    header:                "🤖 **アクティブなエージェントとタスク**"
+    active_agents:         "**アクティブなエージェント:** {count}"
+    this_chat:             " · このチャット"
+    more:                  "... 他に {count} 件"
+    running_processes:     "**実行中のバックグラウンドプロセス:** {count}"
+    async_jobs:            "**ゲートウェイ非同期ジョブ:** {count}"
+    background_delegations: "**バックグラウンド委任:** {count}"
+    none:                  "アクティブなエージェントや実行中のタスクはありません。"
+    state_starting:        "起動中"
+    state_running:         "実行中"
   approve:
     no_pending: 承認待ちのコマンドはありません。
     once_singular: ✅ コマンドを承認しました。エージェントを再開しています...
@@ -142,7 +168,18 @@ gateway:
   fast:
     not_supported: ⚡ /fast は Priority Processing をサポートする OpenAI モデルでのみ利用できます。
     status: '⚡ Priority Processing
-
+    not_supported:         "⚡ /fast は Priority Processing をサポートする OpenAI モデルでのみ利用できます。"
+    status:                "⚡ Priority Processing\n\n現在のモード: `{mode}`\n\n_使い方:_ `/fast <normal|fast|status>`"
+    unknown_arg:           "⚠️ 不明な引数: `{arg}`\n\n**有効なオプション:** normal、fast、status"
+    saved:                 "⚡ ✓ Priority Processing: **{label}** (設定に保存しました)\n_(次のメッセージから有効)_"
+    session_only:          "⚡ ✓ Priority Processing: **{label}** (このセッションのみ)"
+    label_fast:            "FAST"
+    label_normal:          "NORMAL"
+    status_fast:           "fast"
+    status_normal:         "normal"
+    picker_title:          "⚡ **Priority Processing**\\n\\n現在のモード: `{mode}`\\n\\nオプションを選択:"
+    choice_fast:           "fast — Priority Processing オン"
+    choice_normal:         "normal — 標準処理"
 
       現在のモード: `{mode}`
 
@@ -255,7 +292,26 @@ gateway:
     scope_session: セッションのオーバーライド
     scope_global: グローバル設定
     status: '🧠 **推論設定**
-
+    level_default:             "medium (デフォルト)"
+    level_disabled:            "none (無効)"
+    scope_session:             "セッションのオーバーライド"
+    scope_global:              "グローバル設定"
+    status:                    "🧠 **推論設定**\n\n**強度:** `{level}`\n**スコープ:** {scope}\n**表示:** {display}\n\n_使い方:_ `/reasoning <none|minimal|low|medium|high|xhigh|max|ultra|reset|show|hide> [--global]`"
+    display_on:                "オン ✓"
+    display_off:               "オフ"
+    display_set_on:            "🧠 ✓ 推論表示: **オン**\n**{platform}** 上で各応答の前にモデルの思考が表示されます。"
+    display_set_off:           "🧠 ✓ **{platform}** での推論表示: **オフ**"
+    reset_global_unsupported:  "⚠️ `/reasoning reset --global` はサポートされていません。グローバルのデフォルトを変更するには `/reasoning <level> --global` を使用してください。"
+    reset_done:                "🧠 ✓ セッションの推論オーバーライドをクリアしました。グローバル設定にフォールバックします。"
+    unknown_arg:               "⚠️ 不明な引数: `{arg}`\n\n**有効なレベル:** none, minimal, low, medium, high, xhigh, max, ultra\n**表示:** show, hide\n**永続化:** セッションを越えて保存するには `--global` を追加"
+    picker_title:              "🧠 **推論設定**\\n\\n**強度:** `{level}`\\n**スコープ:** {scope}\\n**表示:** {display}\\n\\nオプションを選択:"
+    choice_none:               "none — 推論を無効化"
+    choice_reset:              "reset — セッション上書きをクリア"
+    choice_show:               "返信に推論を表示"
+    choice_hide:               "返信の推論を非表示"
+    set_global:                "🧠 ✓ 推論強度を `{effort}` に設定しました (設定に保存)\n_(次のメッセージから有効)_"
+    set_global_save_failed:    "🧠 ✓ 推論強度を `{effort}` に設定しました (セッションのみ — 設定の保存に失敗)\n_(次のメッセージから有効)_"
+    set_session:               "🧠 ✓ 推論強度を `{effort}` に設定しました (セッションのみ — 永続化するには `--global` を追加)\n_(次のメッセージから有効)_"
 
       **強度:** `{level}`
 
@@ -400,7 +456,32 @@ gateway:
   set_home:
     save_failed: 'ホームチャンネルを保存できませんでした: {error}'
     success: '✅ ホームチャンネルを **{name}** (ID: {chat_id}) に設定しました。
+  diff:
+    not_enabled:           "チェックポイントが有効になっていないため、セッションのベースラインがありません。\nconfig.yaml で有効にしてください:\n```\ncheckpoints:\n  enabled: true\n```\n通常の /diff は引き続き使えます — git を直接使用します。"
+    no_changes:            "変更はありません。"
+    failed:                "{error}"
 
+  set_home:
+    save_failed:           "ホームチャンネルを保存できませんでした: {error}"
+    success:               "✅ ホームチャンネルを **{name}** (ID: {chat_id}) に設定しました。\nCron ジョブとプラットフォーム間メッセージはここに配信されます。"
+  context:
+    header:                "🧠 **Context Window**"
+    model:                 "Model: `{model}`"
+    window:                "Window: {total} tokens"
+    in_use:                "In use: {used} / {total} ({pct}%)"
+    bar:                   "{bar}"
+    headroom:              "Headroom to limit: {headroom} tokens"
+    threshold:             "Auto-compresses at: {threshold} ({threshold_pct}%) — {to_go} to go"
+    over_threshold:        "⚠️ **Over auto-compression threshold ({threshold}, {threshold_pct}%)**"
+    compressions:          "Compressions this session: {count}"
+    last_savings:          "Last compression freed: {savings}% of context"
+    totals_header:         "Session totals (cumulative across {calls} API calls)"
+    totals_line:           "Input {input} · Output {output} · Reasoning {reasoning}"
+    total_billed:          "Total billed: {total}"
+    throughput_note:       "_Throughput, not context size — each call re-sends the window above._"
+    estimated:             "Estimated context: ~{count} tokens across {messages} messages"
+    detail_after_first:    "_(Full compression and throughput stats available after the first agent response)_"
+    no_data:               "No context data available yet. Send a message to start a session."
       Cron ジョブとプラットフォーム間メッセージはここに配信されます。'
   status:
     header: 📊 **Hermes ゲートウェイ状態**
@@ -424,6 +505,27 @@ gateway:
     state_no: いいえ
     queued: '**キュー内の後続:** {count}'
     platforms: '**接続プラットフォーム:** {platforms}'
+    header:                "📊 **Hermes ゲートウェイ状態**"
+    matrix_scope_header:   "**Matrix scope:**"
+    matrix_scope_room:     "  room: {room}"
+    matrix_scope_room_id:  "  room_id: {room_id}"
+    matrix_scope_thread:   "  thread_id: {thread_id}"
+    matrix_scope_mode:     "  session_scope: {scope}"
+    matrix_scope_key:      "  session_key: {session_key}"
+    session_id:            "**セッション ID:** `{session_id}`"
+    title:                 "**タイトル:** {title}"
+    created:               "**作成日時:** {timestamp}"
+    last_activity:         "**最終アクティビティ:** {timestamp}"
+    model:                 "**Model:** `{model}`"
+    model_provider:        "**Model:** `{model}` ({provider})"
+    context:               "**Context:** {used} / {total} ({pct}%)"
+    context_used:          "**Context:** ~{used} tokens"
+    tokens:                "**Lifetime tokens billed:** {tokens} _(not your current context size; use `/context`)_"
+    agent_running:         "**エージェント実行中:** {state}"
+    state_yes:             "はい ⚡"
+    state_no:              "いいえ"
+    queued:                "**キュー内の後続:** {count}"
+    platforms:             "**接続プラットフォーム:** {platforms}"
   stop:
     stopped_pending: ⚡ 停止しました。エージェントはまだ開始していません — このセッションを続行できます。
     stopped: ⚡ 停止しました。このセッションを続行できます。
@@ -526,6 +628,36 @@ gateway:
     label_estimated_context: '推定コンテキスト: ~{count} トークン'
     detailed_after_first: _(詳細な使用状況は最初のエージェント応答後に利用可能)_
     no_data: このセッションの使用データはありません。
+    rate_limits:              "⏱️ **レート制限:** {state}"
+    header_session:           "📊 **セッショントークン使用状況**"
+    label_model:              "モデル: `{model}`"
+    label_input_tokens:       "入力トークン: {count}"
+    label_cache_read:         "キャッシュ読み取りトークン: {count}"
+    label_cache_write:        "キャッシュ書き込みトークン: {count}"
+    label_output_tokens:      "出力トークン: {count}"
+    label_total:              "合計: {count}"
+    label_api_calls:          "API 呼び出し: {count}"
+    label_cost:               "コスト: {prefix}${amount}"
+    label_cost_included:      "コスト: 含まれています"
+    label_context:            "コンテキスト: {used} / {total} ({pct}%)"
+    label_compressions:       "圧縮回数: {count}"
+    breakdown_header: "🧩 **コンテキスト内訳** _(推定)_"
+    breakdown_line: "• {label}: 約{count} ({pct}%)"
+    breakdown_cat_system_prompt: "システムプロンプト"
+    breakdown_cat_tool_definitions: "ツール定義"
+    breakdown_cat_rules: "ルール"
+    breakdown_cat_skills: "スキル"
+    breakdown_cat_mcp: "MCP"
+    breakdown_cat_subagent_definitions: "サブエージェント定義"
+    breakdown_cat_memory: "メモリ"
+    breakdown_cat_conversation: "会話"
+    header_session_info:      "📊 **セッション情報**"
+    label_messages:           "メッセージ数: {count}"
+    label_estimated_context:  "推定コンテキスト: ~{count} トークン"
+    detailed_after_first:     "_(詳細な使用状況は最初のエージェント応答後に利用可能)_"
+    no_data:                  "このセッションの使用データはありません。"
+    unknown_subcommand:       "不明な /usage サブコマンド: `{args}`。`/usage` または `/usage reset [--force]` をお試しください。"
+    reset_wrong_provider:     "バンクされた使用制限リセットは openai-codex プロバイダーでのみ利用できます。まず `/model` で切り替えてください。"
   credits:
     not_logged_in: Nous Portal にログインしていません。ログインすると残高の確認とチャージができます。
   verbose:

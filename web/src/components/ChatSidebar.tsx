@@ -32,6 +32,7 @@ import { ModelReloadConfirm } from "@/components/ModelReloadConfirm";
 import { ReasoningPicker } from "@/components/ReasoningPicker";
 import { GatewayClient, type ConnectionState } from "@/lib/gatewayClient";
 import { api, buildWsUrl } from "@/lib/api";
+import { maybeReloadForLoopbackWsAuthFailure } from "@/lib/dashboard-auth-reload";
 import { titleFromSessionInfoPayload } from "@/lib/chat-title";
 
 import { cn } from "@/lib/utils";
@@ -77,6 +78,21 @@ interface ChatSidebarProps {
   className?: string;
   onDashboardNewSessionRequest?: () => void;
   onSessionTitleChange?: (title: string | null) => void;
+}
+
+/** Build the ``session.create`` params for the sidecar session.
+ *
+ * Extracted from the effect below so the invariant — close_on_disconnect
+ * is set, source is "tool", and the profile is forwarded when present —
+ * can be tested without reading component source text. See
+ * ``chat-sidebar-session-params.test.ts``.
+ */
+export function sidecarSessionCreateParams(profile?: string): Record<string, unknown> {
+  return {
+    close_on_disconnect: true,
+    source: "tool",
+    ...(profile ? { profile } : {}),
+  };
 }
 
 export function ChatSidebar({
@@ -189,11 +205,7 @@ export function ChatSidebar({
         }
         // close_on_disconnect: the gateway reaps this sidecar session (and its
         // slash_worker subprocess) when the WS drops, instead of leaking it.
-        return gw.request<{ session_id: string }>("session.create", {
-          close_on_disconnect: true,
-          source: "tool",
-          ...(profile ? { profile } : {}),
-        });
+        return gw.request<{ session_id: string }>("session.create", sidecarSessionCreateParams(profile));
       })
       .catch((e: Error) => {
         if (!cancelled) {
@@ -247,6 +259,9 @@ export function ChatSidebar({
       ws.addEventListener("error", () => surface(DISCONNECTED));
 
       ws.addEventListener("close", (ev) => {
+        if (maybeReloadForLoopbackWsAuthFailure(ev.code)) {
+          return;
+        }
         if (ev.code === 4401 || ev.code === 4403) {
           surface(`events feed rejected (${ev.code}) — reload the page`);
         } else if (ev.code !== 1000) {
@@ -382,7 +397,7 @@ export function ChatSidebar({
                 onClick={reconnect}
                 prefix={<RefreshCw />}
               >
-                reconnect
+                reconnect tools feed
               </Button>
             )}
           </div>

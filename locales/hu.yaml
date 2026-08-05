@@ -28,6 +28,22 @@ approval:
       pipe_to_interpreter:
         title: 'Pipe to interpreter: git | python3'
         description: Command pipes output from 'git' directly to interpreter 'python3'. Downloaded content will be executed without inspection.
+  dangerous_header: "⚠️  VESZÉLYES PARANCS: {description}"
+  choose_long:     "      [o]egyszer  |  [s]munkamenet  |  [a]mindig  |  [d]elutasít"
+  choose_short:    "      [o]egyszer  |  [s]munkamenet  |  [d]elutasít"
+  prompt_long:     "      Választás [o/s/a/D]: "
+  prompt_short:    "      Választás [o/s/D]: "
+  choose_smart_deny: "      [o]egyszer  |  [d]elutasít"
+  prompt_smart_deny: "      Választás [o/D]: "
+  smart_deny_once_inputs: "o,once"
+  smart_deny_deny_inputs: "d,deny"
+  timeout:         "      ⏱ Időtúllépés - parancs elutasítva"
+  allowed_once:    "      ✓ Egyszer engedélyezve"
+  allowed_session: "      ✓ Engedélyezve ehhez a munkamenethez"
+  allowed_always:  "      ✓ Hozzáadva az állandó engedélylistához"
+  denied:          "      ✗ Elutasítva"
+  cancelled:       "      ✗ Megszakítva"
+  blocklist_message: "Ez a parancs a feltétel nélküli tiltólistán van, és nem hagyható jóvá."
 gateway:
   approval_expired: ⚠️ A jóváhagyás lejárt (az ügynök már nem vár). Kérd meg az ügynököt, hogy próbálja újra.
   draining: ⏳ {count} aktív ügynök befejezésére várunk az újraindítás előtt...
@@ -63,6 +79,16 @@ gateway:
     none: Nincsenek aktív ügynökök vagy futó feladatok.
     state_starting: indul
     state_running: fut
+    header:                "🤖 **Aktív ügynökök és feladatok**"
+    active_agents:         "**Aktív ügynökök:** {count}"
+    this_chat:             " · ez a csevegés"
+    more:                  "... és még {count}"
+    running_processes:     "**Futó háttérfolyamatok:** {count}"
+    async_jobs:            "**Átjáró aszinkron feladatai:** {count}"
+    background_delegations: "**Háttérdelegálások:** {count}"
+    none:                  "Nincsenek aktív ügynökök vagy futó feladatok."
+    state_starting:        "indul"
+    state_running:         "fut"
   approve:
     no_pending: Nincs jóváhagyásra váró parancs.
     once_singular: ✅ Parancs jóváhagyva. Az ügynök folytatja...
@@ -142,7 +168,18 @@ gateway:
   fast:
     not_supported: ⚡ A /fast csak olyan OpenAI modelleknél érhető el, amelyek támogatják a Priority Processinget.
     status: '⚡ Priority Processing
-
+    not_supported:         "⚡ A /fast csak olyan OpenAI modelleknél érhető el, amelyek támogatják a Priority Processinget."
+    status:                "⚡ Priority Processing\n\nJelenlegi mód: `{mode}`\n\n_Használat:_ `/fast <normal|fast|status>`"
+    unknown_arg:           "⚠️ Ismeretlen argumentum: `{arg}`\n\n**Érvényes lehetőségek:** normal, fast, status"
+    saved:                 "⚡ ✓ Priority Processing: **{label}** (mentve a konfigurációba)\n_(a következő üzenettől lép életbe)_"
+    session_only:          "⚡ ✓ Priority Processing: **{label}** (csak ebben a munkamenetben)"
+    label_fast:            "FAST"
+    label_normal:          "NORMAL"
+    status_fast:           "fast"
+    status_normal:         "normal"
+    picker_title:          "⚡ **Priority Processing**\\n\\nJelenlegi mód: `{mode}`\\n\\nVálassz egy opciót:"
+    choice_fast:           "fast — Priority Processing bekapcsolva"
+    choice_normal:         "normal — normál feldolgozás"
 
       Jelenlegi mód: `{mode}`
 
@@ -255,7 +292,26 @@ gateway:
     scope_session: munkamenet-felülbírálás
     scope_global: globális konfiguráció
     status: '🧠 **Gondolkodási beállítások**
-
+    level_default:             "medium (alapértelmezett)"
+    level_disabled:            "none (kikapcsolva)"
+    scope_session:             "munkamenet-felülbírálás"
+    scope_global:              "globális konfiguráció"
+    status:                    "🧠 **Gondolkodási beállítások**\n\n**Erőfeszítés:** `{level}`\n**Hatókör:** {scope}\n**Megjelenítés:** {display}\n\n_Használat:_ `/reasoning <none|minimal|low|medium|high|xhigh|max|ultra|reset|show|hide> [--global]`"
+    display_on:                "be ✓"
+    display_off:               "ki"
+    display_set_on:            "🧠 ✓ Gondolkodás megjelenítése: **BE**\nA modell gondolatai minden válasz előtt megjelennek itt: **{platform}**."
+    display_set_off:           "🧠 ✓ Gondolkodás megjelenítése: **KI** itt: **{platform}**"
+    reset_global_unsupported:  "⚠️ A `/reasoning reset --global` nem támogatott. Használd a `/reasoning <level> --global` parancsot a globális alapérték módosításához."
+    reset_done:                "🧠 ✓ A munkamenet gondolkodási felülbírálása törölve; visszaállás a globális konfigurációra."
+    unknown_arg:               "⚠️ Ismeretlen argumentum: `{arg}`\n\n**Érvényes szintek:** none, minimal, low, medium, high, xhigh, max, ultra\n**Megjelenítés:** show, hide\n**Megőrzés:** add hozzá a `--global` opciót a munkameneten túli mentéshez"
+    picker_title:              "🧠 **Gondolkodási beállítások**\\n\\n**Erőfeszítés:** `{level}`\\n**Hatókör:** {scope}\\n**Megjelenítés:** {display}\\n\\nVálassz egy opciót:"
+    choice_none:               "none — gondolkodás kikapcsolása"
+    choice_reset:              "reset — munkameneti felülbírálás törlése"
+    choice_show:               "gondolkodás megjelenítése a válaszokban"
+    choice_hide:               "gondolkodás elrejtése a válaszokból"
+    set_global:                "🧠 ✓ Gondolkodási erőfeszítés beállítva: `{effort}` (mentve a konfigurációba)\n_(a következő üzenettől lép életbe)_"
+    set_global_save_failed:    "🧠 ✓ Gondolkodási erőfeszítés beállítva: `{effort}` (csak ebben a munkamenetben — a konfiguráció mentése sikertelen)\n_(a következő üzenettől lép életbe)_"
+    set_session:               "🧠 ✓ Gondolkodási erőfeszítés beállítva: `{effort}` (csak ebben a munkamenetben — add hozzá a `--global` opciót a megőrzéshez)\n_(a következő üzenettől lép életbe)_"
 
       **Erőfeszítés:** `{level}`
 
@@ -400,7 +456,32 @@ gateway:
   set_home:
     save_failed: 'Nem sikerült menteni a kezdőcsatornát: {error}'
     success: '✅ Kezdőcsatorna beállítva: **{name}** (ID: {chat_id}).
+  diff:
+    not_enabled:           "A checkpointok nincsenek engedélyezve, így nincs munkamenet-alapvonal.\nEngedélyezd a config.yaml-ban:\n```\ncheckpoints:\n  enabled: true\n```\nA sima /diff továbbra is működik — közvetlenül a gitet használja."
+    no_changes:            "Nincs változás."
+    failed:                "{error}"
 
+  set_home:
+    save_failed:           "Nem sikerült menteni a kezdőcsatornát: {error}"
+    success:               "✅ Kezdőcsatorna beállítva: **{name}** (ID: {chat_id}).\nA cron-feladatok és a platformok közötti üzenetek ide érkeznek."
+  context:
+    header:                "🧠 **Context Window**"
+    model:                 "Model: `{model}`"
+    window:                "Window: {total} tokens"
+    in_use:                "In use: {used} / {total} ({pct}%)"
+    bar:                   "{bar}"
+    headroom:              "Headroom to limit: {headroom} tokens"
+    threshold:             "Auto-compresses at: {threshold} ({threshold_pct}%) — {to_go} to go"
+    over_threshold:        "⚠️ **Over auto-compression threshold ({threshold}, {threshold_pct}%)**"
+    compressions:          "Compressions this session: {count}"
+    last_savings:          "Last compression freed: {savings}% of context"
+    totals_header:         "Session totals (cumulative across {calls} API calls)"
+    totals_line:           "Input {input} · Output {output} · Reasoning {reasoning}"
+    total_billed:          "Total billed: {total}"
+    throughput_note:       "_Throughput, not context size — each call re-sends the window above._"
+    estimated:             "Estimated context: ~{count} tokens across {messages} messages"
+    detail_after_first:    "_(Full compression and throughput stats available after the first agent response)_"
+    no_data:               "No context data available yet. Send a message to start a session."
       A cron-feladatok és a platformok közötti üzenetek ide érkeznek.'
   status:
     header: 📊 **Hermes Gateway állapot**
@@ -424,6 +505,27 @@ gateway:
     state_no: Nem
     queued: '**Sorban álló folytatások:** {count}'
     platforms: '**Csatlakoztatott platformok:** {platforms}'
+    header:                "📊 **Hermes Gateway állapot**"
+    matrix_scope_header:   "**Matrix scope:**"
+    matrix_scope_room:     "  room: {room}"
+    matrix_scope_room_id:  "  room_id: {room_id}"
+    matrix_scope_thread:   "  thread_id: {thread_id}"
+    matrix_scope_mode:     "  session_scope: {scope}"
+    matrix_scope_key:      "  session_key: {session_key}"
+    session_id:            "**Munkamenet-azonosító:** `{session_id}`"
+    title:                 "**Cím:** {title}"
+    created:               "**Létrehozva:** {timestamp}"
+    last_activity:         "**Utolsó tevékenység:** {timestamp}"
+    model:                 "**Model:** `{model}`"
+    model_provider:        "**Model:** `{model}` ({provider})"
+    context:               "**Context:** {used} / {total} ({pct}%)"
+    context_used:          "**Context:** ~{used} tokens"
+    tokens:                "**Lifetime tokens billed:** {tokens} _(not your current context size; use `/context`)_"
+    agent_running:         "**Ügynök fut:** {state}"
+    state_yes:             "Igen ⚡"
+    state_no:              "Nem"
+    queued:                "**Sorban álló folytatások:** {count}"
+    platforms:             "**Csatlakoztatott platformok:** {platforms}"
   stop:
     stopped_pending: ⚡ Leállítva. Az ügynök még el sem kezdte — folytathatod ezt a munkamenetet.
     stopped: ⚡ Leállítva. Folytathatod ezt a munkamenetet.
@@ -526,6 +628,36 @@ gateway:
     label_estimated_context: 'Becsült kontextus: ~{count} token'
     detailed_after_first: _(A részletes használat az első ügynökválasz után érhető el)_
     no_data: Ehhez a munkamenethez nincsenek elérhető használati adatok.
+    rate_limits:              "⏱️ **Sebességkorlátok:** {state}"
+    header_session:           "📊 **Munkamenet tokenhasználat**"
+    label_model:              "Modell: `{model}`"
+    label_input_tokens:       "Bemeneti tokenek: {count}"
+    label_cache_read:         "Gyorsítótár-olvasási tokenek: {count}"
+    label_cache_write:        "Gyorsítótár-írási tokenek: {count}"
+    label_output_tokens:      "Kimeneti tokenek: {count}"
+    label_total:              "Összesen: {count}"
+    label_api_calls:          "API-hívások: {count}"
+    label_cost:               "Költség: {prefix}${amount}"
+    label_cost_included:      "Költség: belefoglalva"
+    label_context:            "Kontextus: {used} / {total} ({pct}%)"
+    label_compressions:       "Tömörítések: {count}"
+    breakdown_header: "🧩 **Kontextus-bontás** _(becsült)_"
+    breakdown_line: "• {label}: ~{count} ({pct}%)"
+    breakdown_cat_system_prompt: "Rendszerüzenet"
+    breakdown_cat_tool_definitions: "Eszközdefiníciók"
+    breakdown_cat_rules: "Szabályok"
+    breakdown_cat_skills: "Készségek"
+    breakdown_cat_mcp: "MCP"
+    breakdown_cat_subagent_definitions: "Alügynök-definíciók"
+    breakdown_cat_memory: "Memória"
+    breakdown_cat_conversation: "Beszélgetés"
+    header_session_info:      "📊 **Munkamenet-információ**"
+    label_messages:           "Üzenetek: {count}"
+    label_estimated_context:  "Becsült kontextus: ~{count} token"
+    detailed_after_first:     "_(A részletes használat az első ügynökválasz után érhető el)_"
+    no_data:                  "Ehhez a munkamenethez nincsenek elérhető használati adatok."
+    unknown_subcommand:       "Ismeretlen /usage alparancs: `{args}`. Próbáld: `/usage` vagy `/usage reset [--force]`."
+    reset_wrong_provider:     "A félretett limit-visszaállítások csak az openai-codex szolgáltatónál érhetők el. Válts először a `/model` paranccsal."
   credits:
     not_logged_in: Nincs bejelentkezve a Nous Portalra. Jelentkezz be a kreditegyenleg megtekintéséhez és feltöltéséhez.
   verbose:
